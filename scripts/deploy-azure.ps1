@@ -183,6 +183,13 @@ Write-Host "Creating the Event Grid evidence-delivery subscription..."
     "--output", "none"
 ))
 
+Write-Host "Verifying the complete Azure rehearsal through Event Grid..."
+& "$repoRoot\.venv\Scripts\python.exe" "$repoRoot\scripts\verify_azure_rehearsal.py" `
+    --base-url $applicationUrl
+if ($LASTEXITCODE -ne 0) {
+    throw "The deployed Azure rehearsal failed end-to-end verification."
+}
+
 $displayName = "$Prefix-presenter"
 $existingAppId = (
     Invoke-AzureCli -Arguments @(
