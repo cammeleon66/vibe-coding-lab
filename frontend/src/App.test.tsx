@@ -83,6 +83,7 @@ describe('expert discovery and referral', () => {
   it('uses the presenter-edited clinical need and explains synthetic availability', async () => {
     const fetchMock = vi.fn((url: string, options?: RequestInit) => {
       if (url === '/api/referrals/current') return response(null)
+      if (url === '/api/cases/current') return response(null)
       if (url === '/api/expert-matches') return response(matchResponse)
       throw new Error(`Unexpected request: ${url} ${options?.method}`)
     })
@@ -136,6 +137,7 @@ describe('expert discovery and referral', () => {
     }
     const fetchMock = vi.fn((url: string, options?: RequestInit) => {
       if (url === '/api/referrals/current') return response(null)
+      if (url === '/api/cases/current') return response(null)
       if (url === '/api/expert-matches') return response(matchResponse)
       if (url === '/api/referrals') return response(referral, 201)
       throw new Error(`Unexpected request: ${url} ${options?.method}`)
@@ -170,5 +172,175 @@ describe('expert discovery and referral', () => {
     await waitFor(() =>
       expect(screen.getByRole('alert')).toHaveTextContent('State store unavailable.'),
     )
+  })
+})
+
+const referral = {
+  id: 'REF-1234',
+  version: 1,
+  created_at: '2026-09-23T10:00:00Z',
+  need: matchResponse.need,
+  urgency: 'expedited',
+  sender: {
+    clinician_name: 'Dr Luca Bianchi',
+    institution: 'Istituto Nazionale dei Tumori, Milan',
+    country: 'Italy',
+  },
+  centre,
+  clinician: centre.clinicians[0],
+  requirements: [],
+  status: 'collaboration_requested',
+  responsibility: { actor: 'Milan', action: 'Release evidence.' },
+  limitations: [],
+}
+
+const evidence = {
+  source_institution: 'Istituto Nazionale dei Tumori, Milan',
+  source_identifier: 'MIL-CDA-001',
+  source_format: 'CDA/XML',
+  observed_at: '2025-03-03T09:00:00Z',
+  received_at: '2026-09-23T10:00:00Z',
+  content_hash: 'abc123',
+  transformation_status: 'transformed',
+  facts: [
+    {
+      key: 'diagnosis_date',
+      label: 'Diagnosis date',
+      category: 'diagnosis',
+      raw_value: '14/02/2025',
+      normalized_value: '2025-02-14',
+      transformation: 'Converted DD/MM/YYYY to ISO 8601.',
+      source_pointer: '/ClinicalDocument/problem/effectiveTime',
+    },
+  ],
+  warnings: ['Italian date format was normalized.'],
+  unmapped_values: [],
+  retrieval_reference: 'fixtures/milan/referral.cda.xml',
+}
+
+const preparedCase = {
+  case_id: 'CRC-EU-001',
+  referral_id: 'REF-1234',
+  version: 1,
+  prepared_at: '2026-09-23T10:10:00Z',
+  clinical_question: 'Conversion therapy and liver-metastasis resectability',
+  evidence: [evidence],
+  claims: [
+    {
+      id: 'diagnosis-date-1',
+      label: 'Diagnosis date',
+      category: 'diagnosis',
+      raw_value: '14/02/2025',
+      normalized_value: '2025-02-14',
+      kind: 'normalized_value',
+      transformation: 'Converted DD/MM/YYYY to ISO 8601.',
+      provenance: [
+        {
+          evidence_id: 'MIL-CDA-001',
+          source_pointer: '/ClinicalDocument/problem/effectiveTime',
+          source_institution: 'Istituto Nazionale dei Tumori, Milan',
+          source_format: 'CDA/XML',
+          observed_at: '2025-03-03T09:00:00Z',
+          transformation_status: 'transformed',
+        },
+      ],
+    },
+  ],
+  conflicts: [
+    {
+      id: 'conflict-diagnosis-date',
+      field: 'diagnosis_date',
+      description: 'Diagnosis date differs across source institutions.',
+      claim_ids: ['diagnosis-date-1', 'diagnosis-date-2'],
+      resolution: 'Unresolved; requires source-owner confirmation.',
+    },
+  ],
+  missing: [
+    {
+      id: 'missing-molecular-profile',
+      field: 'molecular_profile',
+      description: 'RAS, BRAF and MMR/MSI evidence is missing.',
+      severity: 'required',
+      required_by: 'UMC Utrecht',
+      provenance: [
+        {
+          evidence_id: 'MIL-CDA-001',
+          source_pointer: '$.requirements.molecular',
+          source_institution: 'UMC Utrecht',
+          source_format: 'review requirements JSON',
+          observed_at: '2026-09-23T10:06:00Z',
+          transformation_status: 'original',
+        },
+      ],
+    },
+  ],
+  warnings: ['Italian date format was normalized.'],
+  unmapped_values: ['response_code=PRX'],
+  synthesis: [
+    {
+      text: 'Diagnosis date: 2025-02-14.',
+      support_ids: ['diagnosis-date-1'],
+    },
+  ],
+  limitations: ['No treatment recommendation is produced.'],
+}
+
+describe('prepared clinical workspace', () => {
+  it('continues a persisted referral and distinguishes source from normalized values', async () => {
+    const fetchMock = vi.fn((url: string, options?: RequestInit) => {
+      if (url === '/api/referrals/current') return response(referral)
+      if (url === '/api/cases/current') return response(null)
+      if (url === '/api/cases/current/prepare') return response(preparedCase)
+      if (url === '/api/cases/current/sources/MIL-CDA-001') return response(evidence)
+      throw new Error(`Unexpected request: ${url} ${options?.method}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(
+      await screen.findByRole('button', { name: /prepare clinical workspace/i }),
+    )
+
+    expect(await screen.findByText('Evidence together. Origins intact.')).toBeInTheDocument()
+    expect(screen.getByText('Source fact')).toBeInTheDocument()
+    expect(screen.getByText('Normalized value')).toBeInTheDocument()
+    expect(screen.getByText('14/02/2025')).toBeInTheDocument()
+    expect(screen.getByText('2025-02-14')).toBeInTheDocument()
+    expect(screen.getByText(/unresolved source conflict/i)).toBeInTheDocument()
+    expect(screen.getByText(/RAS, BRAF and MMR\/MSI evidence is missing/i)).toBeInTheDocument()
+
+    await user.click(
+      screen.getByRole('button', {
+        name: /Istituto Nazionale dei Tumori, Milan · CDA\/XML/i,
+      }),
+    )
+    expect(await screen.findByLabelText('Source evidence inspector')).toBeInTheDocument()
+    expect(screen.getByText('fixtures/milan/referral.cda.xml')).toBeInTheDocument()
+  })
+
+  it('keeps the referral visible and reports preparation failure', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url === '/api/referrals/current') return response(referral)
+        if (url === '/api/cases/current') return response(null)
+        if (url === '/api/cases/current/prepare') {
+          return response({ detail: 'Institution source unavailable.' }, 503)
+        }
+        throw new Error(`Unexpected request: ${url}`)
+      }),
+    )
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(
+      await screen.findByRole('button', { name: /prepare clinical workspace/i }),
+    )
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Institution source unavailable.',
+    )
+    expect(screen.getByText(/collaboration workspace opened/i)).toBeInTheDocument()
   })
 })

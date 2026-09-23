@@ -1,0 +1,5 @@
+Report ID: MIL-PATH-204
+Observed: 2025-02-15T12:30:00Z
+Received: 2026-09-23T10:01:00Z
+Specimen: Sigmoid colon biopsy
+Finding: Adenocarcinoma, moderately differentiated, colorectal phenotype

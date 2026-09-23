@@ -1,0 +1,21 @@
+{
+  "resourceType": "Bundle",
+  "id": "UTR-BUNDLE-009",
+  "timestamp": "2026-09-23T10:05:00Z",
+  "received_at": "2026-09-23T10:05:10Z",
+  "entry": [
+    {
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [{"system": "urn:synthetic:utrecht", "value": "NL-REF-8841"}]
+      }
+    },
+    {
+      "resource": {
+        "resourceType": "Condition",
+        "code": {"text": "Metastatic colorectal cancer"},
+        "onsetDateTime": "2025-02-16"
+      }
+    }
+  ]
+}

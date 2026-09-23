@@ -3,9 +3,13 @@ import {
   Check,
   CircleAlert,
   CircleDot,
+  Database,
+  ExternalLink,
   FileCheck2,
+  FileSearch,
   Globe2,
   Languages,
+  Link2,
   MapPin,
   Network,
   RotateCcw,
@@ -112,6 +116,81 @@ interface ReferralSender {
   country: string
 }
 
+interface ProvenanceLink {
+  evidence_id: string
+  source_pointer: string
+  source_institution: string
+  source_format: string
+  observed_at: string
+  transformation_status: string
+}
+
+interface EvidenceFact {
+  key: string
+  label: string
+  category: string
+  raw_value: string
+  normalized_value: string | null
+  transformation: string
+  source_pointer: string
+}
+
+interface EvidenceEnvelope {
+  source_institution: string
+  source_identifier: string
+  source_format: string
+  observed_at: string
+  received_at: string
+  content_hash: string
+  transformation_status: string
+  facts: EvidenceFact[]
+  warnings: string[]
+  unmapped_values: string[]
+  retrieval_reference: string
+  original_media_type: string
+  original_content: string
+}
+
+interface PreparedClaim {
+  id: string
+  label: string
+  category: string
+  raw_value: string
+  normalized_value: string | null
+  kind: string
+  transformation: string
+  provenance: ProvenanceLink[]
+}
+
+interface PreparedCase {
+  case_id: string
+  referral_id: string
+  version: number
+  prepared_at: string
+  clinical_question: string
+  evidence: EvidenceEnvelope[]
+  claims: PreparedClaim[]
+  conflicts: {
+    id: string
+    field: string
+    description: string
+    claim_ids: string[]
+    resolution: string
+  }[]
+  missing: {
+    id: string
+    field: string
+    description: string
+    severity: string
+    required_by: string
+    provenance: ProvenanceLink[]
+  }[]
+  warnings: string[]
+  unmapped_values: string[]
+  synthesis: { text: string; support_ids: string[] }[]
+  limitations: string[]
+}
+
 const initialNeed: ClinicalNeed = {
   case_id: 'CRC-EU-001',
   diagnosis: 'Metastatic colorectal cancer with liver-limited metastases',
@@ -150,12 +229,20 @@ function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [selectedClinicianId, setSelectedClinicianId] = useState<string | null>(null)
   const [referral, setReferral] = useState<Referral | null>(null)
+  const [preparedCase, setPreparedCase] = useState<PreparedCase | null>(null)
+  const [inspectedSource, setInspectedSource] = useState<EvidenceEnvelope | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    requestJson<Referral | null>('/api/referrals/current')
-      .then(setReferral)
+    Promise.all([
+      requestJson<Referral | null>('/api/referrals/current'),
+      requestJson<PreparedCase | null>('/api/cases/current'),
+    ])
+      .then(([restoredReferral, restoredCase]) => {
+        setReferral(restoredReferral)
+        setPreparedCase(restoredCase)
+      })
       .catch((reason: unknown) => {
         setError(reason instanceof Error ? reason.message : 'Could not restore the demo state.')
       })
@@ -205,8 +292,39 @@ function App() {
         }),
       })
       setReferral(created)
+      setPreparedCase(null)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Referral creation failed.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function prepareWorkspace() {
+    setBusy(true)
+    setError(null)
+    try {
+      const prepared = await requestJson<PreparedCase>('/api/cases/current/prepare', {
+        method: 'POST',
+      })
+      setPreparedCase(prepared)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Case preparation failed.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function inspectSource(evidenceId: string) {
+    setBusy(true)
+    setError(null)
+    try {
+      const evidence = await requestJson<EvidenceEnvelope>(
+        `/api/cases/current/sources/${encodeURIComponent(evidenceId)}`,
+      )
+      setInspectedSource(evidence)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Source inspection failed.')
     } finally {
       setBusy(false)
     }
@@ -218,6 +336,8 @@ function App() {
     try {
       await requestJson<void>('/api/reset', { method: 'POST' })
       setReferral(null)
+      setPreparedCase(null)
+      setInspectedSource(null)
       setMatches(null)
       setSelectedId(null)
       setSelectedClinicianId(null)
@@ -251,7 +371,17 @@ function App() {
           (step, index) => (
             <div
               className={`journey-step ${
-                referral ? (index < 2 ? 'complete' : '') : matches && index === 0 ? 'complete' : ''
+                preparedCase
+                  ? index < 3
+                    ? 'complete'
+                    : ''
+                  : referral
+                    ? index < 2
+                      ? 'complete'
+                      : ''
+                    : matches && index === 0
+                      ? 'complete'
+                      : ''
               } ${(!matches && index === 0) || (matches && !referral && index === 1) ? 'active' : ''}`}
               key={step}
             >
@@ -269,8 +399,23 @@ function App() {
         </div>
       )}
 
-      {referral ? (
-        <ReferralOpened referral={referral} busy={busy} onReset={resetDemo} />
+      {preparedCase && referral ? (
+        <PreparedWorkspace
+          preparedCase={preparedCase}
+          referral={referral}
+          busy={busy}
+          inspectedSource={inspectedSource}
+          onInspectSource={inspectSource}
+          onCloseSource={() => setInspectedSource(null)}
+          onReset={resetDemo}
+        />
+      ) : referral ? (
+        <ReferralOpened
+          referral={referral}
+          busy={busy}
+          onPrepare={prepareWorkspace}
+          onReset={resetDemo}
+        />
       ) : (
         <>
           <section className="hero">
@@ -515,10 +660,12 @@ function ClinicalQuestion({
 function ReferralOpened({
   referral,
   busy,
+  onPrepare,
   onReset,
 }: {
   referral: Referral
   busy: boolean
+  onPrepare: () => void
   onReset: () => void
 }) {
   const present = referral.requirements.filter((item) => item.status === 'present').length
@@ -601,12 +748,229 @@ function ReferralOpened({
             source-linked case workspace.
           </p>
         </div>
-        <button className="secondary-action" onClick={onReset} disabled={busy}>
-          <RotateCcw size={17} />
-          Reset rehearsal
-        </button>
+        <div className="next-actions">
+          <button className="primary-action" onClick={onPrepare} disabled={busy}>
+            <Database size={17} />
+            {busy ? 'Preparing evidence…' : 'Prepare clinical workspace'}
+          </button>
+          <button className="secondary-action" onClick={onReset} disabled={busy}>
+            <RotateCcw size={17} />
+            Reset rehearsal
+          </button>
+        </div>
       </div>
     </section>
+  )
+}
+
+function PreparedWorkspace({
+  preparedCase,
+  referral,
+  busy,
+  inspectedSource,
+  onInspectSource,
+  onCloseSource,
+  onReset,
+}: {
+  preparedCase: PreparedCase
+  referral: Referral
+  busy: boolean
+  inspectedSource: EvidenceEnvelope | null
+  onInspectSource: (evidenceId: string) => void
+  onCloseSource: () => void
+  onReset: () => void
+}) {
+  return (
+    <section className="workspace">
+      <header className="workspace-head">
+        <div>
+          <p className="eyebrow">Prepared clinical workspace · case v{preparedCase.version}</p>
+          <h1>Evidence together. Origins intact.</h1>
+          <p>{preparedCase.clinical_question}</p>
+        </div>
+        <div className="workspace-route">
+          <span>{referral.sender.country}</span>
+          <ArrowRight size={17} />
+          <span>{referral.centre.country}</span>
+          <small>{preparedCase.evidence.length} source envelopes</small>
+        </div>
+      </header>
+
+      <div className="workspace-alerts">
+        {preparedCase.conflicts.map((conflict) => (
+          <article className="finding conflict" key={conflict.id}>
+            <CircleAlert size={19} />
+            <div>
+              <strong>Unresolved source conflict</strong>
+              <p>{conflict.description}</p>
+              <small>{conflict.resolution}</small>
+            </div>
+          </article>
+        ))}
+        {preparedCase.missing.map((missing) => (
+          <article className="finding missing" key={missing.id}>
+            <CircleAlert size={19} />
+            <div>
+              <strong>Required evidence missing</strong>
+              <p>{missing.description}</p>
+              <button
+                className="text-action"
+                onClick={() => onInspectSource(missing.provenance[0].evidence_id)}
+              >
+                Inspect requirement source <ExternalLink size={14} />
+              </button>
+            </div>
+          </article>
+        ))}
+      </div>
+
+      <div className="workspace-grid">
+        <section className="claim-board" aria-label="Prepared evidence claims">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">Source facts and transformations</p>
+              <h2>Reviewable evidence</h2>
+            </div>
+            <span>{preparedCase.claims.length} claims</span>
+          </div>
+          {preparedCase.claims.map((claim) => (
+            <article className="claim" key={claim.id}>
+              <div className="claim-title">
+                <span>{claim.category}</span>
+                <strong>{claim.label}</strong>
+              </div>
+              <div className="value-pair">
+                <div className="source-value">
+                  <small>Source fact</small>
+                  <p>{claim.raw_value}</p>
+                </div>
+                <ArrowRight size={16} aria-hidden="true" />
+                <div className={claim.normalized_value ? 'normalized-value' : 'unmapped-value'}>
+                  <small>{claim.normalized_value ? 'Normalized value' : 'Unmapped'}</small>
+                  <p>{claim.normalized_value ?? 'No normalized value'}</p>
+                </div>
+              </div>
+              <div className="claim-foot">
+                <span>{claim.transformation}</span>
+                <button
+                  className="source-link"
+                  onClick={() => onInspectSource(claim.provenance[0].evidence_id)}
+                >
+                  <Link2 size={14} />
+                  {claim.provenance[0].source_institution} ·{' '}
+                  {claim.provenance[0].source_format}
+                </button>
+              </div>
+            </article>
+          ))}
+        </section>
+
+        <aside className="synthesis-panel">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">Deterministic synthesis</p>
+              <h2>Bounded case view</h2>
+            </div>
+          </div>
+          <div className="boundary-note">
+            <ShieldCheck size={18} />
+            Uses only the evidence package below. No treatment recommendation or clinical
+            conclusion.
+          </div>
+          <ol className="synthesis-list">
+            {preparedCase.synthesis.map((statement) => (
+              <li key={`${statement.text}-${statement.support_ids.join('-')}`}>
+                <p>{statement.text}</p>
+                <small>Supported by {statement.support_ids.join(', ')}</small>
+              </li>
+            ))}
+          </ol>
+          <div className="warning-stack">
+            <strong>Transformation notes</strong>
+            {preparedCase.warnings.map((warning) => (
+              <p key={warning}>{warning}</p>
+            ))}
+            {preparedCase.unmapped_values.map((value) => (
+              <p className="unmapped" key={value}>
+                Unmapped: {value}
+              </p>
+            ))}
+          </div>
+          <button className="secondary-action" onClick={onReset} disabled={busy}>
+            <RotateCcw size={17} />
+            Reset rehearsal
+          </button>
+        </aside>
+      </div>
+
+      {inspectedSource && (
+        <SourceInspector evidence={inspectedSource} onClose={onCloseSource} />
+      )}
+    </section>
+  )
+}
+
+function SourceInspector({
+  evidence,
+  onClose,
+}: {
+  evidence: EvidenceEnvelope
+  onClose: () => void
+}) {
+  return (
+    <aside className="source-inspector" aria-label="Source evidence inspector">
+      <div className="source-inspector-head">
+        <div>
+          <p className="eyebrow">Original fixture inspection</p>
+          <h2>{evidence.source_format}</h2>
+        </div>
+        <button onClick={onClose} aria-label="Close source inspector">
+          ×
+        </button>
+      </div>
+      <dl>
+        <div>
+          <dt>Institution</dt>
+          <dd>{evidence.source_institution}</dd>
+        </div>
+        <div>
+          <dt>Source ID</dt>
+          <dd>{evidence.source_identifier}</dd>
+        </div>
+        <div>
+          <dt>Observed</dt>
+          <dd>{new Date(evidence.observed_at).toLocaleString()}</dd>
+        </div>
+        <div>
+          <dt>Transformation</dt>
+          <dd>{evidence.transformation_status}</dd>
+        </div>
+        <div>
+          <dt>Fixture</dt>
+          <dd>{evidence.retrieval_reference}</dd>
+        </div>
+      </dl>
+      <div className="source-facts">
+        {evidence.facts.map((fact) => (
+          <article key={`${fact.key}-${fact.source_pointer}`}>
+            <FileSearch size={16} />
+            <div>
+              <strong>{fact.label}</strong>
+              <p>{fact.raw_value}</p>
+              <small>{fact.source_pointer}</small>
+            </div>
+          </article>
+        ))}
+      </div>
+      <div className="original-record">
+        <div>
+          <strong>Preserved original record</strong>
+          <small>{evidence.original_media_type}</small>
+        </div>
+        <pre>{evidence.original_content}</pre>
+      </div>
+      <small className="hash">SHA-256 {evidence.content_hash}</small>
+    </aside>
   )
 }
 

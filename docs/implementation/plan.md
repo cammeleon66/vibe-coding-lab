@@ -60,6 +60,8 @@ A presenter can begin as the synthetic Italian oncologist, enter or select the c
 
 ## INC-002: Heterogeneous evidence and prepared workspace
 
+**Status:** Complete
+
 ### Outcome
 
 The referral becomes a source-linked prepared case assembled from two genuinely different local source fixtures.
@@ -82,6 +84,39 @@ The referral becomes a source-linked prepared case assembled from two genuinely 
 - Source facts and normalized values are visually distinguishable.
 - The deterministic synthesis cannot introduce facts absent from evidence.
 - Tests cover every adapter, transformation warning, conflict, missing field, and provenance link.
+
+### Validation evidence
+
+- The institution source protocol is implemented by structurally different
+  Milan and Utrecht local adapters.
+- Local fixtures cover CDA/XML, PDF-derived text, local treatment JSON,
+  DICOM metadata JSON, FHIR-like JSON, and Utrecht review-requirement JSON.
+- The prepared case preserves raw values, normalized values, transformation
+  descriptions, content hashes, source pointers, warnings, unmapped values,
+  deliberate identifier/date conflicts, and the missing molecular profile.
+- Every prepared claim has a source envelope and pointer; the presenter can
+  retrieve and inspect that envelope through the HTTP API and UI.
+- Deterministic synthesis is built only from prepared claims, conflicts, and
+  missingness findings; support identifiers are validated against the package
+  and no treatment or resectability conclusion is emitted.
+- Backend formatting and Ruff lint pass; strict mypy passes.
+- Twelve backend tests pass with 97% statement coverage.
+- Frontend lint, five Vitest behavior tests, and the production build pass.
+- Source inspection exposes the preserved synthetic original record, not only
+  the derived evidence envelope, and partial molecular panels retain each
+  still-missing component.
+- Covered failure paths include preparation without a referral, source
+  inspection without a prepared case, restore failure, and preparation failure
+  while preserving the referral view.
+
+### Known limitations carried forward
+
+- PDF input is represented by deterministic extracted text, not OCR or layout
+  interpretation.
+- DICOM pixels and late restaging imaging remain INC-003; INC-002 preserves
+  baseline DICOM metadata only.
+- FHIR is intentionally FHIR-like and not production-profile validated.
+- Clinical-fidelity review and browser visual evidence remain part of INC-006.
 
 ## INC-003: Imaging update and change detection
 
@@ -204,5 +239,6 @@ The exact commands will be established with the application scaffold. At minimum
 
 ## Next action
 
-Implement `INC-002` locally. This is autonomous, low risk, reversible, and
-requires no Azure resources.
+INC-002 is complete locally. The next planned increment is `INC-003`, but it has
+not been started by this change. No Azure or Fabric resources were provisioned
+or modified.

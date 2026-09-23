@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ClinicalDocument documentId="MIL-CDA-001" observedAt="2025-03-03T09:00:00Z" receivedAt="2026-09-23T10:00:00Z">
+  <recordTarget><patientRole><id><fact name="patient_identifier">MIL-8841</fact></id></patientRole></recordTarget>
+  <component><problem>
+    <fact name="diagnosis">Adenocarcinoma colon with hepatic metastases</fact>
+    <fact name="diagnosis_date">14/02/2025</fact>
+  </problem></component>
+</ClinicalDocument>

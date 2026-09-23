@@ -26,6 +26,22 @@ class ReferralStatus(StrEnum):
     COLLABORATION_REQUESTED = "collaboration_requested"
 
 
+class TransformationStatus(StrEnum):
+    ORIGINAL = "original"
+    TRANSFORMED = "transformed"
+    PARTIAL = "partial"
+
+
+class ClaimKind(StrEnum):
+    SOURCE_FACT = "source_fact"
+    NORMALIZED_VALUE = "normalized_value"
+
+
+class FindingSeverity(StrEnum):
+    WARNING = "warning"
+    REQUIRED = "required"
+
+
 class ClinicalNeed(BaseModel):
     case_id: str = "CRC-EU-001"
     diagnosis: str = "Metastatic colorectal cancer with liver-limited metastases"
@@ -133,8 +149,93 @@ class Referral(BaseModel):
     limitations: list[str]
 
 
+class EvidenceFact(BaseModel):
+    key: str
+    label: str
+    category: str
+    raw_value: str
+    normalized_value: str | None = None
+    transformation: str
+    source_pointer: str
+
+
+class EvidenceEnvelope(BaseModel):
+    source_institution: str
+    source_identifier: str
+    source_format: str
+    observed_at: datetime
+    received_at: datetime
+    content_hash: str
+    transformation_status: TransformationStatus
+    facts: list[EvidenceFact]
+    warnings: list[str] = Field(default_factory=list)
+    unmapped_values: list[str] = Field(default_factory=list)
+    retrieval_reference: str
+    original_media_type: str
+    original_content: str
+
+
+class ProvenanceLink(BaseModel):
+    evidence_id: str
+    source_pointer: str
+    source_institution: str
+    source_format: str
+    observed_at: datetime
+    transformation_status: TransformationStatus
+
+
+class PreparedClaim(BaseModel):
+    id: str
+    label: str
+    category: str
+    raw_value: str
+    normalized_value: str | None = None
+    kind: ClaimKind
+    transformation: str
+    provenance: list[ProvenanceLink]
+
+
+class ConflictFinding(BaseModel):
+    id: str
+    field: str
+    description: str
+    claim_ids: list[str]
+    resolution: str
+
+
+class MissingFinding(BaseModel):
+    id: str
+    field: str
+    description: str
+    severity: FindingSeverity
+    required_by: str
+    provenance: list[ProvenanceLink]
+
+
+class SynthesisStatement(BaseModel):
+    text: str
+    support_ids: list[str]
+
+
+class PreparedCase(BaseModel):
+    case_id: str
+    referral_id: str
+    version: int
+    prepared_at: datetime
+    clinical_question: str
+    evidence: list[EvidenceEnvelope]
+    claims: list[PreparedClaim]
+    conflicts: list[ConflictFinding]
+    missing: list[MissingFinding]
+    warnings: list[str]
+    unmapped_values: list[str]
+    synthesis: list[SynthesisStatement]
+    limitations: list[str]
+
+
 class DemoState(BaseModel):
     current_referral: Referral | None = None
+    current_prepared_case: PreparedCase | None = None
 
 
 def utc_now() -> datetime:
