@@ -454,6 +454,32 @@ The user selected the three-private-endpoint option with a EUR 35 budget alert.
 Deployment may proceed with a VNet-integrated Container Apps environment, one
 private endpoint per storage account, and linked Blob private DNS.
 
+### Live deployment checkpoint
+
+The approved base deployment completed on 2026-09-23 after registering the
+subscription feature required by a VNet-integrated external Container Apps
+environment. The durable checkpoint now contains:
+
+- Container Apps environment `oncology-collab-demo-env-2`;
+- all three storage accounts with public access disabled;
+- exactly three approved Blob private endpoints and linked private DNS;
+- ACR, managed identity, monitoring, least-privilege runtime roles, and the
+  EUR 35 budget alert;
+- application image `oncology-collab-demo:16c1cd8`, whose remote ACR build
+  completed successfully.
+
+The deployment stopped after the local Azure CLI failed to render a Unicode
+checkmark while streaming the successful ACR build log through the Windows
+code page. This was not an ACR or infrastructure failure. It exposed two
+orchestration weaknesses: the script treated a presentation-layer log failure
+as a build failure, and it could not resume after a completed base deployment.
+
+The deployment script now supports resuming from the latest successful base
+deployment, reusing a verified image tag, preserving the approved
+`2026-10-07` expiry, and polling ACR build state without streaming logs. No
+Container App, Event Grid system topic, or Entra presenter application has been
+created yet. No live rehearsal has run.
+
 ## Technical quality gates
 
 The exact commands will be established with the application scaffold. At minimum:
@@ -468,9 +494,15 @@ The exact commands will be established with the application scaffold. At minimum
 ## Next action
 
 INC-006 is complete locally and ready for external clinical-fidelity review.
-That review remains a presentation gate. `INC-007` remains blocked on revised
-networking and cost approval. The approved base Azure resources were briefly
-created, the subscription-enforced private-network constraint was verified, and
-all created resources and the budget were then deleted. No application became
-live, no Azure resources remain, no Fabric workspace was modified, no private
-MDO backend was integrated, and no live AI was added.
+That review remains a presentation gate. Resume `INC-007` from the successful
+base and image checkpoints with:
+
+```powershell
+.\scripts\deploy-azure.ps1 -ResumeAfterBase -ReuseExistingImage -ApplicationImageTag 16c1cd8
+```
+
+Do not rerun the base deployment or image build. The remaining sequence is
+Container App deployment and fixture seeding, removal of temporary write roles,
+Event Grid creation, live rehearsal verification, and Entra presenter
+authentication. Fabric remains deferred, Azure OpenAI remains disabled, and the
+approved expiry remains 2026-10-07.

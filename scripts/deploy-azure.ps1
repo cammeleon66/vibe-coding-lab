@@ -5,7 +5,10 @@ param(
     [string]$Prefix = "oncology-collab-demo",
     [string]$OwnerEmail = "admin@MngEnvMCAP670682.onmicrosoft.com",
     [int]$BudgetAmount = 35,
-    [int]$ExpiryDays = 14
+    [int]$ExpiryDays = 14,
+    [switch]$ResumeAfterBase,
+    [switch]$ReuseExistingImage,
+    [string]$ApplicationImageTag = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -42,40 +45,121 @@ $budgetEnd = $budgetStart.AddYears(1)
 $timestamp = $today.ToUniversalTime().ToString("yyyyMMddHHmmss")
 
 Write-Host "Deploying approved base resources to $Subscription ($($account.id))..."
-$base = Invoke-AzureCliJson -Arguments @(
-    "deployment", "sub", "create",
-    "--name", "$Prefix-base-$timestamp",
-    "--location", $Location,
-    "--template-file", "$repoRoot\infra\main.bicep",
-    "--parameters",
-    "location=$Location",
-    "prefix=$Prefix",
-    "ownerEmail=$OwnerEmail",
-    "expiryDate=$expiry",
-    "budgetAmount=$BudgetAmount",
-    "budgetStartDate=$($budgetStart.ToString('yyyy-MM-dd'))",
-    "budgetEndDate=$($budgetEnd.ToString('yyyy-MM-dd'))",
-    "--only-show-errors",
-    "--output", "json"
-)
+if ($ResumeAfterBase) {
+    $baseDeploymentName = (
+        Invoke-AzureCli -Arguments @(
+            "deployment", "sub", "list",
+            "--query", "sort_by([?starts_with(name, '$Prefix-base-') && properties.provisioningState == 'Succeeded'], &properties.timestamp)[-1].name",
+            "--output", "tsv"
+        )
+    ).Trim()
+    if ([string]::IsNullOrWhiteSpace($baseDeploymentName)) {
+        throw "No successful base deployment exists to resume."
+    }
+    Write-Host "Reusing successful base deployment $baseDeploymentName."
+    $base = Invoke-AzureCliJson -Arguments @(
+        "deployment", "sub", "show",
+        "--name", $baseDeploymentName,
+        "--output", "json"
+    )
+}
+else {
+    $base = Invoke-AzureCliJson -Arguments @(
+        "deployment", "sub", "create",
+        "--name", "$Prefix-base-$timestamp",
+        "--location", $Location,
+        "--template-file", "$repoRoot\infra\main.bicep",
+        "--parameters",
+        "location=$Location",
+        "prefix=$Prefix",
+        "ownerEmail=$OwnerEmail",
+        "expiryDate=$expiry",
+        "budgetAmount=$BudgetAmount",
+        "budgetStartDate=$($budgetStart.ToString('yyyy-MM-dd'))",
+        "budgetEndDate=$($budgetEnd.ToString('yyyy-MM-dd'))",
+        "--only-show-errors",
+        "--output", "json"
+    )
+}
 $outputs = $base.properties.outputs
 $platformResourceGroup = $outputs.platformResourceGroupName.value
 $milanResourceGroup = $outputs.milanResourceGroupName.value
+if ($ResumeAfterBase) {
+    $approvedExpiry = (
+        Invoke-AzureCli -Arguments @(
+            "group", "show",
+            "--name", $platformResourceGroup,
+            "--query", "tags.ExpiresOn",
+            "--output", "tsv"
+        )
+    ).Trim()
+    if ([string]::IsNullOrWhiteSpace($approvedExpiry)) {
+        throw "The successful base deployment has no ExpiresOn tag."
+    }
+    $expiry = $approvedExpiry
+    Write-Host "Preserving approved expiry date $expiry."
+}
 $acrName = $outputs.acrName.value
 $acrLoginServer = $outputs.acrLoginServer.value
-$imageTag = (git rev-parse --short HEAD).Trim()
+$imageTag = if ([string]::IsNullOrWhiteSpace($ApplicationImageTag)) {
+    (git rev-parse --short HEAD).Trim()
+}
+else {
+    $ApplicationImageTag.Trim()
+}
 $image = "$acrLoginServer/$Prefix`:$imageTag"
 
 Write-Host "Building the application image in Azure Container Registry..."
-[void](Invoke-AzureCli -Arguments @(
-    "acr", "build",
-    "--registry", $acrName,
-    "--image", "$Prefix`:$imageTag",
-    "--file", "$repoRoot\Dockerfile",
-    $repoRoot,
-    "--only-show-errors",
-    "--output", "none"
-))
+if ($ReuseExistingImage) {
+    $existingTag = (
+        Invoke-AzureCli -Arguments @(
+            "acr", "repository", "show-tags",
+            "--name", $acrName,
+            "--repository", $Prefix,
+            "--query", "[?@ == '$imageTag'] | [0]",
+            "--output", "tsv",
+            "--only-show-errors"
+        )
+    ).Trim()
+    if ($existingTag -ne $imageTag) {
+        throw "Image $Prefix`:$imageTag does not exist in $acrName."
+    }
+    Write-Host "Reusing existing image $image."
+}
+else {
+    $build = Invoke-AzureCliJson -Arguments @(
+        "acr", "build",
+        "--registry", $acrName,
+        "--image", "$Prefix`:$imageTag",
+        "--file", "$repoRoot\Dockerfile",
+        $repoRoot,
+        "--no-logs",
+        "--no-wait",
+        "--only-show-errors",
+        "--output", "json"
+    )
+    $runId = $build.runId
+    if ([string]::IsNullOrWhiteSpace($runId)) {
+        throw "Azure Container Registry did not return a build run ID."
+    }
+    do {
+        Start-Sleep -Seconds 10
+        $buildStatus = (
+            Invoke-AzureCli -Arguments @(
+                "acr", "task", "show-run",
+                "--registry", $acrName,
+                "--run-id", $runId,
+                "--query", "status",
+                "--output", "tsv",
+                "--only-show-errors"
+            )
+        ).Trim()
+        Write-Host "ACR build $runId status: $buildStatus"
+    } while ($buildStatus -in @("Queued", "Started", "Running"))
+    if ($buildStatus -ne "Succeeded") {
+        throw "ACR build $runId finished with status $buildStatus."
+    }
+}
 
 $secretBytes = New-Object byte[] 32
 [Security.Cryptography.RandomNumberGenerator]::Fill($secretBytes)
