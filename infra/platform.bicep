@@ -1,14 +1,15 @@
 param location string
 param prefix string
 param tags object
+param networkGeneration string = '2'
 
 var suffix = uniqueString(subscription().id, prefix)
 var acrName = take('ocd${suffix}', 50)
 var workspaceName = '${prefix}-logs'
 var insightsName = '${prefix}-insights'
-var environmentName = '${prefix}-env'
+var environmentName = '${prefix}-env-${networkGeneration}'
 var identityName = '${prefix}-identity'
-var virtualNetworkName = '${prefix}-vnet'
+var virtualNetworkName = '${prefix}-vnet-${networkGeneration}'
 var blobDnsZoneName = 'privatelink.blob.${az.environment().suffixes.storage}'
 
 resource virtualNetwork 'Microsoft.Network/virtualNetworks@2024-07-01' = {
@@ -57,7 +58,7 @@ resource blobDnsZone 'Microsoft.Network/privateDnsZones@2024-06-01' = {
 
 resource blobDnsLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2024-06-01' = {
   parent: blobDnsZone
-  name: '${prefix}-blob-link'
+  name: '${prefix}-blob-link-${networkGeneration}'
   location: 'global'
   tags: tags
   properties: {

@@ -7,6 +7,7 @@ param expiryDate string
 param budgetAmount int = 35
 param budgetStartDate string
 param budgetEndDate string
+param networkGeneration string = '2'
 
 var commonTags = {
   Application: 'European oncology collaboration demo'
@@ -47,6 +48,7 @@ module platform 'platform.bicep' = {
   params: {
     location: location
     prefix: prefix
+    networkGeneration: networkGeneration
     tags: commonTags
   }
 }
