@@ -1,7 +1,7 @@
 # Azure deployment networking decision
 
 **Decision ID:** DEC-007  
-**Status:** Approved  
+**Status:** Approved
 **Date:** 2026-09-23  
 **Related issue:** GitHub #6 / INC-007
 
@@ -58,9 +58,9 @@ Blob endpoints. Do not silently consolidate storage accounts.
 
 **Decision:** Three private endpoints approved.
 
-**Approver:** User  
-**Approval statement:** “ok go for three private endpoints”  
-**Date:** 2026-09-23  
+**Approver:** User
+**Approval statement:** “ok go for three private endpoints”
+**Date:** 2026-09-23
 **Approved scope:** Preserve the three storage accounts; add a dedicated
 Container Apps subnet, a private-endpoint subnet, three Blob private endpoints,
 one linked Blob private DNS zone, and a EUR 35 monthly budget alert. Keep the
