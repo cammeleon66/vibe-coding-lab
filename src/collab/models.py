@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -394,6 +395,22 @@ class ResearchPublication(BaseModel):
 
 class ResearchAuthorizationCreate(BaseModel):
     authorization_code: str = Field(min_length=1)
+
+
+class PreflightCheck(BaseModel):
+    id: str
+    label: str
+    status: Literal["pass", "warning", "fail"]
+    detail: str
+    required: bool = True
+
+
+class PreflightReport(BaseModel):
+    ready: bool
+    mode: str = "synthetic-rehearsal"
+    checked_at: datetime
+    checks: list[PreflightCheck]
+    limitations: list[str]
 
 
 class DemoState(BaseModel):

@@ -20,7 +20,8 @@ import {
   ShieldCheck,
   Stethoscope,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import './App.css'
 
 type MatchStatus = 'match' | 'condition'
@@ -311,6 +312,20 @@ interface ResearchPublication {
   }
 }
 
+interface PreflightReport {
+  ready: boolean
+  mode: string
+  checked_at: string
+  checks: {
+    id: string
+    label: string
+    status: 'pass' | 'warning' | 'fail'
+    detail: string
+    required: boolean
+  }[]
+  limitations: string[]
+}
+
 const initialNeed: ClinicalNeed = {
   case_id: 'CRC-EU-001',
   diagnosis: 'Metastatic colorectal cancer with liver-limited metastases',
@@ -360,8 +375,13 @@ function App() {
   const [researchPublication, setResearchPublication] = useState<ResearchPublication | null>(null)
   const [researchLoading, setResearchLoading] = useState(false)
   const [researchError, setResearchError] = useState<string | null>(null)
+  const [restoring, setRestoring] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [statusMessage, setStatusMessage] = useState<string | null>(null)
+  const [preflightOpen, setPreflightOpen] = useState(false)
+  const [preflightLoading, setPreflightLoading] = useState(false)
+  const [preflightReport, setPreflightReport] = useState<PreflightReport | null>(null)
 
   useEffect(() => {
     Promise.all([
@@ -406,6 +426,7 @@ function App() {
       .catch((reason: unknown) => {
         setError(reason instanceof Error ? reason.message : 'Could not restore the demo state.')
       })
+      .finally(() => setRestoring(false))
   }, [])
 
   async function refreshReviewState() {
@@ -430,6 +451,7 @@ function App() {
   async function findExpertise() {
     setBusy(true)
     setError(null)
+    setStatusMessage(null)
     try {
       const result = await requestJson<MatchResponse>('/api/expert-matches', {
         method: 'POST',
@@ -449,6 +471,7 @@ function App() {
     if (!selected || !selectedClinicianId) return
     setBusy(true)
     setError(null)
+    setStatusMessage(null)
     try {
       const created = await requestJson<Referral>('/api/referrals', {
         method: 'POST',
@@ -476,6 +499,7 @@ function App() {
   async function prepareWorkspace() {
     setBusy(true)
     setError(null)
+    setStatusMessage(null)
     try {
       const prepared = await requestJson<PreparedCase>('/api/cases/current/prepare', {
         method: 'POST',
@@ -494,6 +518,7 @@ function App() {
   async function inspectSource(evidenceId: string, version?: number) {
     setBusy(true)
     setError(null)
+    setStatusMessage(null)
     try {
       const evidence = await requestJson<EvidenceEnvelope>(
         `/api/cases/current/sources/${encodeURIComponent(evidenceId)}${
@@ -512,6 +537,7 @@ function App() {
     if (!preparedCase) return
     setBusy(true)
     setError(null)
+    setStatusMessage(null)
     try {
       const result = await requestJson<EvidenceArrivalResult>('/api/evidence-arrivals', {
         method: 'POST',
@@ -559,6 +585,7 @@ function App() {
   }) {
     setBusy(true)
     setError(null)
+    setStatusMessage(null)
     try {
       const state = await requestJson<HumanReviewState>('/api/cases/current/reviews', {
         method: 'POST',
@@ -577,6 +604,7 @@ function App() {
     if (!preparedCase || !reviewState?.opinion) return
     setBusy(true)
     setError(null)
+    setStatusMessage(null)
     try {
       const manifest = await requestJson<HandoffManifest>('/api/cases/current/handoffs', {
         method: 'POST',
@@ -596,6 +624,7 @@ function App() {
   async function openResearchEpilogue() {
     setResearchLoading(true)
     setResearchError(null)
+    setStatusMessage(null)
     try {
       await requestJson<void>('/api/research/authorize', {
         method: 'POST',
@@ -618,6 +647,7 @@ function App() {
   async function publishResearchProjection() {
     setResearchLoading(true)
     setResearchError(null)
+    setStatusMessage(null)
     try {
       const publication = await requestJson<ResearchPublication>(
         '/api/research/projection',
@@ -638,6 +668,7 @@ function App() {
   async function resetDemo() {
     setBusy(true)
     setError(null)
+    setStatusMessage(null)
     try {
       await requestJson<void>('/api/reset', { method: 'POST' })
       setReferral(null)
@@ -655,6 +686,10 @@ function App() {
       setMatches(null)
       setSelectedId(null)
       setSelectedClinicianId(null)
+      setNeed(initialNeed)
+      setSender(initialSender)
+      setUrgency('expedited')
+      setStatusMessage('Rehearsal reset to a clean synthetic case.')
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not reset the demo.')
     } finally {
@@ -662,8 +697,35 @@ function App() {
     }
   }
 
+  async function runPreflight() {
+    setPreflightOpen(true)
+    setPreflightLoading(true)
+    setError(null)
+    setStatusMessage(null)
+    try {
+      setPreflightReport(await requestJson<PreflightReport>('/api/preflight'))
+    } catch (reason) {
+      setPreflightReport(null)
+      setError(reason instanceof Error ? reason.message : 'Preflight could not be completed.')
+    } finally {
+      setPreflightLoading(false)
+    }
+  }
+
+  const completedJourneySteps = handoffManifest
+    ? 5
+    : reviewState?.handoff_ready
+      ? 4
+      : preparedCase
+        ? 3
+        : referral
+          ? 2
+          : matches
+            ? 1
+            : 0
+
   return (
-    <main>
+    <main aria-busy={restoring || busy || preflightLoading}>
       <header className="masthead">
         <a className="brand" href="/" aria-label="European Oncology Exchange">
           <span className="brand-mark" aria-hidden="true">
@@ -674,37 +736,58 @@ function App() {
             <small>Synthetic collaboration demonstrator</small>
           </span>
         </a>
-        <div className="mode-label">
-          <CircleDot size={14} />
-          Deterministic rehearsal
+        <div className="presenter-controls">
+          <div className="mode-label">
+            <CircleDot size={14} />
+            Deterministic rehearsal
+          </div>
+          <button className="header-action" type="button" onClick={runPreflight}>
+            <ShieldCheck size={15} />
+            Preflight
+          </button>
+          <button
+            className="header-action"
+            type="button"
+            onClick={resetDemo}
+            disabled={busy || restoring}
+          >
+            <RotateCcw size={15} />
+            Reset
+          </button>
         </div>
       </header>
 
-      <section className="journey-rail" aria-label="Demonstration journey">
+      <ol className="journey-rail" aria-label="Demonstration journey" tabIndex={0}>
         {['Find expertise', 'Open collaboration', 'Prepare evidence', 'Human review', 'MDO'].map(
           (step, index) => (
-            <div
-              className={`journey-step ${
-                preparedCase
-                  ? index < 3
-                    ? 'complete'
-                    : ''
-                  : referral
-                    ? index < 2
-                      ? 'complete'
-                      : ''
-                    : matches && index === 0
-                      ? 'complete'
-                      : ''
-              } ${(!matches && index === 0) || (matches && !referral && index === 1) ? 'active' : ''}`}
+            <li
+              className={`journey-step ${index < completedJourneySteps ? 'complete' : ''} ${
+                index === Math.min(completedJourneySteps, 4) && completedJourneySteps < 5
+                  ? 'active'
+                  : ''
+              }`}
               key={step}
+              aria-current={
+                index === Math.min(completedJourneySteps, 4) && completedJourneySteps < 5
+                  ? 'step'
+                  : undefined
+              }
             >
               <span>{String(index + 1).padStart(2, '0')}</span>
               {step}
-            </div>
+            </li>
           ),
         )}
-      </section>
+      </ol>
+
+      {preflightOpen && (
+        <PreflightPanel
+          loading={preflightLoading}
+          report={preflightReport}
+          onClose={() => setPreflightOpen(false)}
+          onRun={runPreflight}
+        />
+      )}
 
       {error && (
         <div className="alert" role="alert">
@@ -713,7 +796,21 @@ function App() {
         </div>
       )}
 
-      {preparedCase && referral ? (
+      {statusMessage && (
+        <div className="status-banner" role="status">
+          <Check size={18} />
+          <span>{statusMessage}</span>
+        </div>
+      )}
+
+      {restoring ? (
+        <section className="loading-stage" role="status" aria-live="polite">
+          <span className="loading-pulse" aria-hidden="true" />
+          <p className="eyebrow">Restoring deterministic rehearsal</p>
+          <h1>Bringing the last valid case state back into view.</h1>
+          <p>Source evidence and collaboration state remain local and synthetic.</p>
+        </section>
+      ) : preparedCase && referral ? (
         <PreparedWorkspace
           preparedCase={preparedCase}
           previousCase={previousCase}
@@ -785,6 +882,18 @@ function App() {
                 </p>
               </div>
 
+              {matches.matches.length === 0 ? (
+                <div className="empty-state" role="status">
+                  <FileSearch size={28} />
+                  <div>
+                    <h3>No suitable synthetic centre found</h3>
+                    <p>
+                      Revise the clinical need or available evidence. The demonstrator does not
+                      invent a match when its bounded directory has none.
+                    </p>
+                  </div>
+                </div>
+              ) : (
               <div className="network-layout">
                 <div className="centre-list" role="list" aria-label="Matched expert centres">
                   {matches.matches.map((match, index) => (
@@ -893,6 +1002,7 @@ function App() {
                   </article>
                 )}
               </div>
+              )}
             </section>
           )}
         </>
@@ -903,6 +1013,61 @@ function App() {
         <span>No live directory, credential or availability verification</span>
       </footer>
     </main>
+  )
+}
+
+function PreflightPanel({
+  loading,
+  report,
+  onClose,
+  onRun,
+}: {
+  loading: boolean
+  report: PreflightReport | null
+  onClose: () => void
+  onRun: () => void
+}) {
+  return (
+    <section className="preflight-panel" aria-label="Presenter preflight">
+      <div className="preflight-heading">
+        <div>
+          <p className="eyebrow">Presenter readiness</p>
+          <h2>{report?.ready ? 'Local rehearsal ready' : 'Check the room before the story'}</h2>
+        </div>
+        <button className="header-action" type="button" onClick={onClose}>
+          Close
+        </button>
+      </div>
+      {loading && (
+        <div className="preflight-loading" role="status">
+          <span className="loading-pulse" aria-hidden="true" />
+          Checking deterministic fixtures, state, build, and boundaries…
+        </div>
+      )}
+      {!loading && report && (
+        <>
+          <div className="preflight-checks">
+            {report.checks.map((check) => (
+              <article className={`preflight-check ${check.status}`} key={check.id}>
+                {check.status === 'pass' ? <Check size={17} /> : <CircleAlert size={17} />}
+                <div>
+                  <strong>{check.label}</strong>
+                  <p>{check.detail}</p>
+                </div>
+              </article>
+            ))}
+          </div>
+          <div className="preflight-foot">
+            <span>
+              {report.ready ? 'All required local checks passed.' : 'Required checks need attention.'}
+            </span>
+            <button className="secondary-action" type="button" onClick={onRun}>
+              Run again
+            </button>
+          </div>
+        </>
+      )}
+    </section>
   )
 }
 
@@ -1181,6 +1346,20 @@ function PreparedWorkspace({
             <strong>Evidence update failed — case v{caseUpdateError.preserved_version} preserved</strong>
             <p>{caseUpdateError.message}</p>
             <small>Delivery {caseUpdateError.event_id}</small>
+          </div>
+        </section>
+      )}
+
+      {handoffManifest && (
+        <section className="completed-state" role="status">
+          <Check size={22} />
+          <div>
+            <p className="eyebrow">Clinical presenter path complete</p>
+            <h2>Evidence, judgement, and responsibility are ready to travel together.</h2>
+            <p>
+              Manifest {handoffManifest.id} preserves case v{handoffManifest.evidence_version}
+              {' '}for the clearly labeled narrative MDO handoff.
+            </p>
           </div>
         </section>
       )}
@@ -1849,14 +2028,68 @@ function SourceInspector({
   evidence: EvidenceEnvelope
   onClose: () => void
 }) {
-  return (
-    <aside className="source-inspector" aria-label="Source evidence inspector">
+  const closeButton = useRef<HTMLButtonElement>(null)
+  const dialog = useRef<HTMLElement>(null)
+  const previousFocus = useRef<HTMLElement | null>(null)
+  const closeRef = useRef(onClose)
+
+  useEffect(() => {
+    closeRef.current = onClose
+  }, [onClose])
+
+  useEffect(() => {
+    previousFocus.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const main = document.querySelector('main')
+    main?.setAttribute('inert', '')
+    closeButton.current?.focus()
+    function handleDialogKeyboard(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        closeRef.current()
+        return
+      }
+      if (event.key !== 'Tab' || !dialog.current) return
+      const focusable = Array.from(
+        dialog.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      )
+      if (focusable.length === 0) {
+        event.preventDefault()
+        return
+      }
+      const first = focusable[0]
+      const last = focusable.at(-1)
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last?.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+    window.addEventListener('keydown', handleDialogKeyboard)
+    return () => {
+      window.removeEventListener('keydown', handleDialogKeyboard)
+      main?.removeAttribute('inert')
+      previousFocus.current?.focus()
+    }
+  }, [])
+
+  return createPortal(
+    <aside
+      ref={dialog}
+      className="source-inspector"
+      aria-label="Source evidence inspector"
+      role="dialog"
+      aria-modal="true"
+    >
       <div className="source-inspector-head">
         <div>
           <p className="eyebrow">Original fixture inspection</p>
           <h2>{evidence.source_format}</h2>
         </div>
-        <button onClick={onClose} aria-label="Close source inspector">
+        <button ref={closeButton} onClick={onClose} aria-label="Close source inspector">
           ×
         </button>
       </div>
@@ -1902,7 +2135,8 @@ function SourceInspector({
         <pre>{evidence.original_content}</pre>
       </div>
       <small className="hash">SHA-256 {evidence.content_hash}</small>
-    </aside>
+    </aside>,
+    document.body,
   )
 }
 

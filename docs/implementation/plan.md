@@ -321,6 +321,8 @@ The presenter can show that a separately authorized research role sees an approv
 
 ## INC-006: Demonstration and quality
 
+**Status:** Complete locally; external clinical-fidelity approval pending
+
 ### Outcome
 
 The local product is visually compelling, deterministic, accessible, reviewable, and ready for clinical-fidelity review.
@@ -342,6 +344,60 @@ The local product is visually compelling, deterministic, accessible, reviewable,
 - All required states have visual evidence.
 - Product requirements map to passing tests or demo evidence.
 - Known limitations are presented explicitly.
+
+### Implementation evidence
+
+- `GET /api/preflight` returns a typed report for deterministic mode, all eight
+  required source fixtures parsed through the real preparation and late-arrival
+  adapters, state-store load/write readiness, the production frontend build,
+  the MDO narrative boundary, and optional research authorization. It performs
+  no Azure, Fabric, MDO, or live-AI request.
+- A presenter can reset from every application stage. Reset clears the complete
+  local `DemoState`, presenter-edited inputs, and every issued local research
+  session, then returns visible confirmation that is cleared when work resumes.
+- The UI now has explicit restore-loading, bounded empty-match, error,
+  evidence-update, and completed clinical-path states.
+- The five-step journey is an ordered progress region with current/completed
+  semantics. The source inspector is a modal dialog with initial focus and
+  Escape close, keyboard focus containment, inert background content, and
+  trigger-focus restoration.
+- Playwright drives the public UI from a clean state through expertise,
+  referral, preparation, provenance inspection, late imaging, human review, and
+  MDO manifest creation at 1440×960 and Pixel 7 widths.
+- The planned presenter beats total 90 seconds. The automated path verifies the
+  same actions complete well below the 120-second upper bound.
+- axe automation covers WCAG 2 A/AA and WCAG 2.1 A/AA on opening and prepared
+  states at desktop and mobile widths.
+- Loading, empty, error, update, completed, desktop, and mobile JPEG evidence is
+  stored under `docs/demo/evidence/`; the set remains below 1 MB.
+- `docs/demo/presenter-guide.md` provides the timed visual story, exact bounded
+  language, preflight/reset sequence, and recovery paths.
+- `docs/reviews/inc-006-quality-review.md` records intent, code, security,
+  visual, accessibility, and requirements-to-evidence review.
+- `docs/reviews/clinical-fidelity-review-package.md` defines the external
+  oncology review dossier and makes clear that fidelity approval is still
+  pending.
+
+### Validation evidence
+
+- Ruff format check and lint pass.
+- Strict mypy passes for all 14 source files.
+- All 40 backend tests pass with 96% statement coverage.
+- Frontend lint passes; all 13 Vitest tests and the production build pass.
+- Five Playwright checks pass across desktop and mobile Chromium; the
+  desktop-only state-capture case is intentionally skipped on mobile.
+- Complete presenter rehearsal passes repeatedly from a clean state on both
+  configured viewports.
+
+### Known limitations carried forward
+
+- External oncology review is not complete. `RT-002` remains a mandatory gate
+  before presenting the case as clinically plausible.
+- Browser automation covers Chromium only and does not replace assistive-
+  technology or clinician usability testing.
+- The MDO target is not health-checked; the manifest is a narrative deep link
+  with no private state integration.
+- DICOM remains metadata-only, and the research adapter remains a local fake.
 
 ## INC-007: Azure and Fabric deployment
 
@@ -374,8 +430,9 @@ The exact commands will be established with the application scaffold. At minimum
 
 ## Next action
 
-INC-005 is complete locally. The next planned increment is `INC-006`,
-demonstration and quality evidence. No Azure or Fabric resources were
-provisioned or modified, no trust boundary was expanded beyond the approved
-local simulation, no private MDO backend was integrated, and no live AI was
-added.
+INC-006 is complete locally and ready for external clinical-fidelity review.
+That review remains a presentation gate. `INC-007` remains blocked on the
+existing cost, identity, Fabric, monitoring, deployment, and teardown
+approvals. No Azure or Fabric resources were provisioned or modified, no trust
+boundary was expanded beyond the approved local simulation, no private MDO
+backend was integrated, and no live AI was added.

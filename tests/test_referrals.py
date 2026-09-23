@@ -1,4 +1,5 @@
 from pathlib import Path
+from shutil import copytree
 
 from fastapi.testclient import TestClient
 
@@ -66,3 +67,94 @@ def test_referral_rejects_clinician_from_another_centre(tmp_path: Path) -> None:
 
     assert response.status_code == 422
     assert response.json()["detail"] == "The selected clinician does not belong to this centre."
+
+
+def test_preflight_reports_local_demo_readiness_and_boundaries(tmp_path: Path) -> None:
+    frontend_dist = tmp_path / "frontend-dist"
+    frontend_dist.mkdir()
+    (frontend_dist / "index.html").write_text("<!doctype html>", encoding="utf-8")
+    with TestClient(
+        create_app(
+            tmp_path / "state.json",
+            mdo_base_url="http://localhost:5174",
+            research_authorization_code="research-code",
+            frontend_dist=frontend_dist,
+        )
+    ) as client:
+        response = client.get("/api/preflight")
+
+    assert response.status_code == 200
+    report = response.json()
+    assert report["ready"] is True
+    assert report["mode"] == "synthetic-rehearsal"
+    checks = {item["id"]: item for item in report["checks"]}
+    assert checks["runtime-mode"]["status"] == "pass"
+    assert checks["fixtures"]["status"] == "pass"
+    assert checks["state-store"]["status"] == "pass"
+    assert checks["frontend-build"]["status"] == "pass"
+    assert checks["research-authorization"]["status"] == "pass"
+    assert "no private MDO state is accessed" in checks["mdo-boundary"]["detail"]
+
+
+def test_preflight_fails_when_presenter_build_is_missing(tmp_path: Path) -> None:
+    with TestClient(
+        create_app(
+            tmp_path / "state.json",
+            frontend_dist=tmp_path / "missing-frontend-dist",
+        )
+    ) as client:
+        report = client.get("/api/preflight").json()
+
+    assert report["ready"] is False
+    checks = {item["id"]: item for item in report["checks"]}
+    assert checks["frontend-build"]["status"] == "fail"
+
+
+def test_preflight_fails_when_a_fixture_cannot_be_parsed(tmp_path: Path) -> None:
+    source_fixtures = Path(__file__).parents[1] / "src" / "collab" / "fixtures"
+    fixture_root = tmp_path / "fixtures"
+    copytree(source_fixtures, fixture_root)
+    (fixture_root / "milan" / "treatment.local.json").write_text("{", encoding="utf-8")
+    frontend_dist = tmp_path / "frontend-dist"
+    frontend_dist.mkdir()
+    (frontend_dist / "index.html").write_text("<!doctype html>", encoding="utf-8")
+
+    with TestClient(
+        create_app(
+            tmp_path / "state.json",
+            frontend_dist=frontend_dist,
+            fixture_root=fixture_root,
+        )
+    ) as client:
+        report = client.get("/api/preflight").json()
+
+    checks = {item["id"]: item for item in report["checks"]}
+    assert report["ready"] is False
+    assert checks["fixtures"]["status"] == "fail"
+    assert "Fixture rehearsal failed" in checks["fixtures"]["detail"]
+
+
+def test_reset_returns_demo_to_a_clean_state(tmp_path: Path) -> None:
+    state_path = tmp_path / "state.json"
+    with TestClient(create_app(state_path)) as client:
+        assert (
+            client.post(
+                "/api/referrals",
+                json={
+                    "need": {},
+                    "centre_id": "utrecht-crc",
+                    "clinician_id": "eva-van-dijk",
+                    "urgency": "routine",
+                    "sender": {
+                        "clinician_name": "Dr Luca Bianchi",
+                        "institution": "Istituto Nazionale dei Tumori, Milan",
+                        "country": "Italy",
+                    },
+                },
+            ).status_code
+            == 201
+        )
+        assert client.post("/api/reset").status_code == 204
+        assert client.get("/api/referrals/current").json() is None
+        assert client.get("/api/cases/current").json() is None
+        assert client.get("/api/cases/current/versions").json() == []

@@ -36,6 +36,10 @@ class JsonStateStore:
                 temporary_path = Path(temporary.name)
             temporary_path.replace(self._path)
 
+    def check_writable(self) -> None:
+        with self._lock:
+            self.save(self.load())
+
     @contextmanager
     def locked(self) -> Iterator[None]:
         """Serialize local read-modify-write state transitions."""

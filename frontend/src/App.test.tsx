@@ -91,7 +91,7 @@ describe('expert discovery and referral', () => {
     const user = userEvent.setup()
     render(<App />)
 
-    const question = screen.getByLabelText('Clinical question')
+    const question = await screen.findByLabelText('Clinical question')
     await user.clear(question)
     await user.type(question, 'Could surgery become feasible after conversion therapy?')
     await user.click(screen.getByRole('button', { name: /find european expertise/i }))
@@ -146,7 +146,7 @@ describe('expert discovery and referral', () => {
     const user = userEvent.setup()
     render(<App />)
 
-    await user.selectOptions(screen.getByLabelText('Urgency'), 'urgent')
+    await user.selectOptions(await screen.findByLabelText('Urgency'), 'urgent')
     await user.click(screen.getByRole('button', { name: /find european expertise/i }))
     await screen.findAllByText('UMC Utrecht')
     await user.click(screen.getByRole('button', { name: /request specialist collaboration/i }))

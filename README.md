@@ -49,6 +49,19 @@ The approved product, architecture, reviews, and implementation plan live under
   seam without any Fabric or Azure resource changes.
 - A short cohort-feasibility epilogue covering authorization, loading, empty,
   successful publication, and explicit publication-failure states.
+- A typed presenter preflight covering deterministic mode, required fixtures,
+  local state-store readiness, the production build, the narrative MDO boundary,
+  and optional research authorization.
+- A globally available reset that returns the rehearsal to a clean synthetic
+  state with visible confirmation.
+- Explicit restore-loading, bounded empty, error, evidence-update, and completed
+  presenter states.
+- Playwright acceptance at 1440×960 and Pixel 7 widths, axe accessibility
+  automation, basic keyboard/dialog semantics, and a deterministic 90-second
+  presenter beat plan.
+- Durable visual evidence, a visual-storytelling presenter guide, structured
+  quality review, requirements traceability, and a clinical-fidelity package
+  ready for external oncology review.
 
 ## Run locally
 
@@ -66,6 +79,10 @@ $env:RESEARCH_DEMO_AUTHORIZATION_CODE = "choose-a-local-rehearsal-code"
 ```
 
 Open <http://127.0.0.1:8000>.
+
+Before presenting, select **Preflight**, require all mandatory checks to pass,
+then select **Reset**. The complete 90-second visual story and recovery language
+are in [`docs/demo/presenter-guide.md`](docs/demo/presenter-guide.md).
 
 For frontend development, run `npm run dev` in `frontend`; Vite proxies `/api`
 to the FastAPI application on port 8000.
@@ -116,11 +133,21 @@ Set-Location frontend
 npm run lint
 npm run test
 npm run build
+npm run test:browser
 ```
 
 Current verified result (2026-09-23): backend formatting, Ruff lint, strict
-mypy, and 33 pytest tests pass with 97% statement coverage; frontend lint,
-12 Vitest behavior tests, and the production build pass.
+mypy, and 38 pytest tests pass with 96% statement coverage; frontend lint,
+13 Vitest behavior tests, the production build, and five Playwright checks pass
+across desktop and mobile Chromium (one desktop-only visual-capture case is
+skipped on mobile). Axe reports no critical or serious WCAG A/AA violations in
+the automated opening and prepared-workspace scans.
+
+Review evidence:
+
+- [`docs/reviews/inc-006-quality-review.md`](docs/reviews/inc-006-quality-review.md)
+- [`docs/reviews/clinical-fidelity-review-package.md`](docs/reviews/clinical-fidelity-review-package.md)
+- [`docs/demo/evidence/`](docs/demo/evidence/)
 
 ## Current limitations
 
@@ -138,13 +165,16 @@ mypy, and 33 pytest tests pass with 97% statement coverage; frontend lint,
 - The MDO launch target is a configurable narrative deep link. Availability and
   matching-case readiness of the separate MDO application remain presentation
   preflight responsibilities; no private MDO backend integration exists.
-- Research authorization is a labeled local simulation using the
-  `X-Demo-Role` header, not production identity, consent, or workspace security.
+- Research authorization is a labeled local simulation using a configured code
+  exchanged for an HTTP-only localhost session cookie, not production identity,
+  consent, or workspace security.
 - The local Fabric adapter stores no external data. The OneLake interface is
   only a future adapter seam; no cloud adapter or Fabric workspace integration
   exists.
-- Browser visual evidence, clinical-fidelity review, and cloud adapters remain
-  later approved increments.
+- Browser automation is Chromium-only and does not replace screen-reader,
+  cross-browser, or clinical-user usability testing.
+- The clinical-fidelity package is ready, but external oncology review and
+  presentation approval remain unresolved.
 
 Azure provisioning, Fabric changes, deployment, and live model usage require
 separate approval.

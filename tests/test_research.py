@@ -204,3 +204,38 @@ def test_local_adapter_publication_is_idempotent_by_projection_id(tmp_path: Path
     assert second.status_code == 201
     assert first.json()["receipt"]["id"] == second.json()["receipt"]["id"]
     assert len(adapter.published) == 1
+
+
+def test_reset_revokes_the_local_research_session(tmp_path: Path) -> None:
+    with TestClient(
+        create_app(
+            tmp_path / "state.json",
+            research_authorization_code="research-code",
+        )
+    ) as client:
+        _authorize(client)
+        assert client.get("/api/research/projection").status_code == 200
+        assert client.post("/api/reset").status_code == 204
+        denied = client.get("/api/research/projection")
+
+    assert denied.status_code == 403
+
+
+def test_reset_revokes_all_local_research_sessions(tmp_path: Path) -> None:
+    application = create_app(
+        tmp_path / "state.json",
+        research_authorization_code="research-code",
+    )
+    with (
+        TestClient(application) as first,
+        TestClient(application) as second,
+    ):
+        _authorize(first)
+        _authorize(second)
+        assert first.get("/api/research/projection").status_code == 200
+        assert second.get("/api/research/projection").status_code == 200
+
+        assert second.post("/api/reset").status_code == 204
+
+        assert first.get("/api/research/projection").status_code == 403
+        assert second.get("/api/research/projection").status_code == 403

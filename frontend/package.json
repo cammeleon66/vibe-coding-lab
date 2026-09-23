@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "test:browser": "npm run build && playwright test",
+    "test:browser:update": "npm run build && playwright test --update-snapshots",
     "lint": "oxlint",
     "test": "vitest run",
     "preview": "vite preview"
@@ -16,6 +18,8 @@
     "react-dom": "^19.2.8"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@playwright/test": "^1.63.0",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.7",

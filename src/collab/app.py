@@ -27,11 +27,16 @@ from collab.models import (
     HumanOpinionCreate,
     HumanReviewState,
     MatchResponse,
+    PreflightCheck,
+    PreflightReport,
     PreparedCase,
     Referral,
     ReferralCreate,
+    ReferralSender,
     ResearchAuthorizationCreate,
     ResearchPublication,
+    Urgency,
+    utc_now,
 )
 from collab.persistence import JsonStateStore
 from collab.preparation import CasePreparationService, PreparationError
@@ -52,12 +57,19 @@ def create_app(
     mdo_base_url: str | None = None,
     research_adapter: OneLakeProjectionAdapter | None = None,
     research_authorization_code: str | None = None,
+    frontend_dist: Path | None = None,
+    fixture_root: Path | None = None,
 ) -> FastAPI:
-    directory = SyntheticExpertDirectory()
+    repository_root = Path(__file__).resolve().parents[2]
+    configured_fixture_root = fixture_root or Path(__file__).parent / "fixtures"
+    directory = SyntheticExpertDirectory(configured_fixture_root / "expert_centres.json")
     referral_service = ReferralService(directory)
-    preparation_service = CasePreparationService([MilanLocalSource(), UtrechtLocalSource()])
+    milan_source = MilanLocalSource(configured_fixture_root / "milan")
+    utrecht_source = UtrechtLocalSource(configured_fixture_root / "utrecht")
+    late_imaging_source = MilanLateImagingSource(configured_fixture_root / "milan")
+    preparation_service = CasePreparationService([milan_source, utrecht_source])
     evidence_arrivals = arrival_service or EvidenceArrivalService(
-        MilanLateImagingSource(),
+        late_imaging_source,
         preparation_service,
     )
     configured_mdo_url = mdo_base_url or os.getenv("MDO_DEMO_URL") or "http://localhost:5174"
@@ -81,6 +93,145 @@ def create_app(
     @application.get("/api/health")
     def health() -> dict[str, str]:
         return {"status": "ok", "mode": "synthetic-rehearsal"}
+
+    @application.get("/api/preflight", response_model=PreflightReport)
+    def preflight() -> PreflightReport:
+        required_fixtures = [
+            configured_fixture_root / "expert_centres.json",
+            configured_fixture_root / "milan" / "referral.cda.xml",
+            configured_fixture_root / "milan" / "pathology.pdf.txt",
+            configured_fixture_root / "milan" / "treatment.local.json",
+            configured_fixture_root / "milan" / "baseline-ct.dicom-metadata.json",
+            configured_fixture_root / "milan" / "restaging-mri.dicom-metadata.json",
+            configured_fixture_root / "utrecht" / "referral.fhir.json",
+            configured_fixture_root / "utrecht" / "review-requirements.json",
+        ]
+        missing_fixtures = [
+            path.relative_to(configured_fixture_root).as_posix()
+            for path in required_fixtures
+            if not path.is_file() or path.stat().st_size == 0
+        ]
+        invalid_fixture_detail: str | None = None
+        if not missing_fixtures:
+            try:
+                rehearsal_referral = referral_service.create(
+                    ReferralCreate(
+                        need=ClinicalNeed(),
+                        centre_id="utrecht-crc",
+                        clinician_id="eva-van-dijk",
+                        urgency=Urgency.EXPEDITED,
+                        sender=ReferralSender(
+                            clinician_name="Synthetic preflight",
+                            institution="Synthetic preflight",
+                            country="Italy",
+                        ),
+                    )
+                )
+                rehearsal_case = preparation_service.prepare(rehearsal_referral)
+                evidence_arrivals.apply(
+                    EvidenceArrivalEvent(
+                        event_id="preflight-imaging",
+                        case_id=rehearsal_case.case_id,
+                        evidence_set="baseline-and-restaging-imaging",
+                        occurred_at=utc_now(),
+                    ),
+                    rehearsal_referral,
+                    rehearsal_case,
+                )
+            except (OSError, ValueError, KeyError, IndexError) as error:
+                invalid_fixture_detail = str(error)
+        checks = [
+            PreflightCheck(
+                id="runtime-mode",
+                label="Deterministic runtime",
+                status="pass",
+                detail="Synthetic rehearsal mode is active; no live AI adapter is configured.",
+            ),
+            PreflightCheck(
+                id="fixtures",
+                label="Synthetic source fixtures",
+                status=(
+                    "pass" if not missing_fixtures and invalid_fixture_detail is None else "fail"
+                ),
+                detail=(
+                    (
+                        f"All {len(required_fixtures)} required source fixtures parse "
+                        "through preparation and late-arrival rehearsal."
+                    )
+                    if not missing_fixtures and invalid_fixture_detail is None
+                    else (
+                        f"Missing or empty fixtures: {', '.join(missing_fixtures)}."
+                        if missing_fixtures
+                        else f"Fixture rehearsal failed: {invalid_fixture_detail}."
+                    )
+                ),
+            ),
+        ]
+        try:
+            store.load()
+            store.check_writable()
+        except (OSError, ValueError) as error:
+            checks.append(
+                PreflightCheck(
+                    id="state-store",
+                    label="Local state store",
+                    status="fail",
+                    detail=f"Local state cannot be loaded or written: {error}",
+                )
+            )
+        else:
+            checks.append(
+                PreflightCheck(
+                    id="state-store",
+                    label="Local state store",
+                    status="pass",
+                    detail="Local rehearsal state can be loaded and atomically written.",
+                )
+            )
+        frontend_index = (frontend_dist or repository_root / "frontend" / "dist") / "index.html"
+        checks.extend(
+            [
+                PreflightCheck(
+                    id="frontend-build",
+                    label="Presenter build",
+                    status="pass" if frontend_index.is_file() else "fail",
+                    detail=(
+                        "The production frontend build is available to FastAPI."
+                        if frontend_index.is_file()
+                        else "Run `npm run build` in frontend before the rehearsal."
+                    ),
+                ),
+                PreflightCheck(
+                    id="mdo-boundary",
+                    label="MDO narrative handoff",
+                    status="pass",
+                    detail=(
+                        f"Deep-link target is {configured_mdo_url}. Availability is not probed "
+                        "and no private MDO state is accessed."
+                    ),
+                ),
+                PreflightCheck(
+                    id="research-authorization",
+                    label="Optional research epilogue",
+                    status="pass" if configured_research_code else "warning",
+                    detail=(
+                        "A separate local research authorization code is configured."
+                        if configured_research_code
+                        else "Not configured; the primary clinical presenter path remains ready."
+                    ),
+                    required=False,
+                ),
+            ]
+        )
+        return PreflightReport(
+            ready=all(check.status != "fail" for check in checks if check.required),
+            checked_at=utc_now(),
+            checks=checks,
+            limitations=[
+                "Preflight does not contact Azure, Fabric, the autonomous MDO backend, or live AI.",
+                "Clinical fidelity remains subject to external oncology review.",
+            ],
+        )
 
     @application.post("/api/expert-matches", response_model=MatchResponse)
     def expert_matches(need: ClinicalNeed) -> MatchResponse:
@@ -444,22 +595,24 @@ def create_app(
         return evidence
 
     @application.post("/api/reset", status_code=status.HTTP_204_NO_CONTENT)
-    def reset() -> None:
+    def reset(response: Response) -> None:
         store.save(DemoState())
+        research_sessions.clear()
+        response.delete_cookie("research_demo_session", samesite="strict")
 
-    frontend_dist = Path("frontend") / "dist"
-    assets_path = frontend_dist / "assets"
+    frontend_dist_path = frontend_dist or repository_root / "frontend" / "dist"
+    assets_path = frontend_dist_path / "assets"
     if assets_path.exists():
         application.mount("/assets", StaticFiles(directory=assets_path), name="assets")
 
-    if (frontend_dist / "index.html").exists():
+    if (frontend_dist_path / "index.html").exists():
 
         @application.get("/{path:path}", include_in_schema=False)
         def frontend(path: str) -> FileResponse:
-            requested = frontend_dist / path
+            requested = frontend_dist_path / path
             if path and requested.is_file():
                 return FileResponse(requested)
-            return FileResponse(frontend_dist / "index.html")
+            return FileResponse(frontend_dist_path / "index.html")
 
     return application
 
