@@ -254,6 +254,8 @@ The fictional Utrecht clinician records an opinion and next action, then creates
 
 ## INC-005: Research authorization epilogue
 
+**Status:** Complete
+
 ### Outcome
 
 The presenter can show that a separately authorized research role sees an approved synthetic projection rather than the clinical workspace.
@@ -272,6 +274,50 @@ The presenter can show that a separately authorized research role sees an approv
 - Projection purpose, version, fields, and lineage are visible.
 - Workflow notes and direct source documents are excluded unless explicitly approved.
 - Tests cover authorization, field allowlisting, lineage, and failed publication.
+
+### Implementation evidence
+
+- `collab.research.ResearchProjectionModule` owns the projection purpose,
+  versioning, exact allowlist, exclusions, source-linked lineage, and
+  publication behavior behind one small interface.
+- `OneLakeProjectionAdapter` is the future publication seam. The only current
+  adapter is `LocalFabricAdapterFake`; it performs no network or Fabric
+  operation and has an explicit failure mode.
+- `GET` and `POST /api/research/projection` require the separately simulated
+  `synthetic-researcher` role. Missing or clinical roles receive `403`; clinical
+  workspace access does not imply research access.
+- The published record contains only synthetic case ID, diagnosis, histology,
+  and systemic treatment. Workflow notes, direct source documents, patient
+  identifiers, human opinions, and handoff responsibility are explicitly
+  excluded.
+- Publication receipts and approved projections persist in local demo state.
+  Failed publication returns `503` and does not persist or display an
+  unconfirmed projection.
+- The React epilogue shows clinical-role denial and separately authorized
+  loading, empty, success, lineage, exclusion, and failure states.
+
+### Validation evidence
+
+- Ruff format check and lint pass.
+- Strict mypy passes for all 14 source files.
+- All 34 backend tests pass with 96% statement coverage, including authorization,
+  exact allowlisting, exclusions, lineage, persistence, missing-case behavior,
+  and failed publication.
+- Frontend lint passes; all 13 Vitest behavior tests and the production build
+  pass.
+- Independent review findings were fixed: research authorization now uses a
+  separately configured code and HTTP-only session rather than a caller-minted
+  role header; publication is staged and idempotent for reconciliation; and the
+  UI explicitly offers a new projection after the clinical case advances.
+
+### Known limitations carried forward
+
+- `X-Demo-Role` is a deterministic demonstration header, not production
+  authentication, consent, or authorization.
+- The adapter fake does not contact Fabric or OneLake. Implementing a cloud
+  adapter, workspace, identity, or role assignment remains gated under INC-007.
+- Cohort feasibility intentionally contains one synthetic case and is not a
+  statistical, clinical, or governance claim.
 
 ## INC-006: Demonstration and quality
 
@@ -328,6 +374,8 @@ The exact commands will be established with the application scaffold. At minimum
 
 ## Next action
 
-INC-004 is complete locally. The next planned increment is `INC-005`; it has not
-been started by this change. No Azure or Fabric resources were provisioned or
-modified, no private MDO backend was integrated, and no live AI was added.
+INC-005 is complete locally. The next planned increment is `INC-006`,
+demonstration and quality evidence. No Azure or Fabric resources were
+provisioned or modified, no trust boundary was expanded beyond the approved
+local simulation, no private MDO backend was integrated, and no live AI was
+added.

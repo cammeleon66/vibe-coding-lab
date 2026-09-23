@@ -1407,6 +1407,217 @@ h3 {
   text-decoration: none;
 }
 
+.research-boundary,
+.research-epilogue {
+  padding: 48px clamp(22px, 6vw, 100px);
+}
+
+.research-boundary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+  color: var(--white);
+  background: #34233f;
+}
+
+.research-boundary h2,
+.research-heading h2 {
+  margin-bottom: 8px;
+  font-size: clamp(2rem, 4vw, 3.7rem);
+  letter-spacing: -0.04em;
+}
+
+.research-boundary p {
+  max-width: 720px;
+  color: #d7cadc;
+  line-height: 1.55;
+}
+
+.role-gate {
+  min-width: 320px;
+  display: grid;
+  gap: 14px;
+}
+
+.role-gate > span,
+.research-heading > span {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.role-gate > span {
+  color: #ffd2c8;
+}
+
+.role-gate label {
+  display: grid;
+  gap: 6px;
+  color: #d8e4ef;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.role-gate input {
+  padding: 11px 12px;
+  color: var(--white);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.08);
+  letter-spacing: normal;
+}
+
+.research-epilogue {
+  color: var(--ink);
+  background: #e9f0ea;
+}
+
+.research-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.research-heading > span {
+  color: var(--success);
+}
+
+.research-state {
+  margin-top: 24px;
+  padding: 22px;
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  border: 1px solid rgba(36, 119, 95, 0.28);
+  background: var(--white);
+}
+
+.research-state p {
+  margin: 5px 0 0;
+  color: var(--ink-soft);
+}
+
+.research-state .primary-action {
+  margin-left: auto;
+}
+
+.research-state.publication-failed {
+  color: #742b1e;
+  border-color: rgba(160, 75, 50, 0.35);
+  background: #fff0ec;
+}
+
+.research-state.publication-stale {
+  grid-column: 1 / -1;
+  color: #744b00;
+  border-color: rgba(160, 112, 20, 0.35);
+  background: #fff7df;
+}
+
+.research-state small {
+  display: block;
+  margin-top: 6px;
+}
+
+.cohort-view {
+  margin-top: 24px;
+  display: grid;
+  grid-template-columns: minmax(180px, 0.45fr) minmax(320px, 1.2fr) minmax(300px, 1fr);
+  gap: 16px;
+}
+
+.cohort-view > article {
+  padding: 22px;
+  border: 1px solid rgba(36, 119, 95, 0.23);
+  background: var(--white);
+}
+
+.cohort-count span,
+.projection-detail span {
+  color: var(--ink-soft);
+  font-size: 0.65rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.cohort-count strong {
+  display: block;
+  margin: 16px 0 4px;
+  color: var(--success);
+  font-size: 5rem;
+  line-height: 0.8;
+}
+
+.cohort-count p,
+.projection-detail p,
+.lineage-view p {
+  color: var(--ink-soft);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.projection-meta {
+  margin: 14px 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.projection-meta span {
+  padding: 6px 8px;
+  color: var(--success);
+  background: #e7f3ee;
+}
+
+.projection-detail dl {
+  margin: 0;
+}
+
+.projection-detail dl div,
+.lineage-view > div {
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+
+.projection-detail dt {
+  color: var(--ink-soft);
+  font-size: 0.62rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.projection-detail dd {
+  margin: 4px 0 0;
+  font-size: 0.76rem;
+}
+
+.lineage-view h3 {
+  margin-bottom: 12px;
+}
+
+.lineage-view p {
+  margin: 4px 0;
+}
+
+.lineage-view small {
+  color: var(--blue);
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 0.62rem;
+  overflow-wrap: anywhere;
+}
+
+.lineage-view .exclusion-note {
+  padding: 11px;
+  color: var(--warning);
+  background: #fff0ec;
+}
+
 .workspace-grid {
   padding: 48px clamp(22px, 6vw, 100px) 72px;
   display: grid;
@@ -1755,7 +1966,9 @@ footer {
 
   .review-heading,
   .handoff-zone,
-  .manifest-title {
+  .manifest-title,
+  .research-boundary,
+  .research-heading {
     align-items: flex-start;
     flex-direction: column;
   }
@@ -1766,6 +1979,15 @@ footer {
 
   .handoff-manifest dl {
     grid-template-columns: 1fr;
+  }
+
+  .cohort-view {
+    grid-template-columns: 1fr;
+  }
+
+  .role-gate {
+    width: 100%;
+    min-width: 0;
   }
 
   .synthesis-panel {

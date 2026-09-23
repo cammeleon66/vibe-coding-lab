@@ -664,3 +664,200 @@ describe('human responsibility and MDO handoff', () => {
     ).not.toBeInTheDocument()
   })
 })
+
+const researchPublication = {
+  projection: {
+    id: 'RP-CRC-EU-001-V1',
+    purpose:
+      'Synthetic cohort feasibility for metastatic colorectal cancer collaboration research.',
+    version: 1,
+    schema_version: 'research-cohort-v1',
+    case_version: 1,
+    approved_fields: ['synthetic_case_id', 'diagnosis', 'histology', 'systemic_treatment'],
+    record: {
+      synthetic_case_id: 'CRC-EU-001',
+      diagnosis: 'Metastatic colorectal adenocarcinoma with liver metastases',
+      histology: 'Moderately differentiated colorectal adenocarcinoma',
+      systemic_treatment: 'FOLFOXIRI plus bevacizumab, 6 cycles',
+    },
+    lineage: [
+      {
+        field: 'diagnosis',
+        prepared_claim_id: 'diagnosis-1',
+        source_record_id: 'MIL-CDA-001',
+        source_institution: 'Istituto Nazionale dei Tumori, Milan',
+        source_format: 'CDA/XML',
+        source_pointer: '/ClinicalDocument/diagnosis',
+      },
+    ],
+    excluded_categories: [
+      'workflow notes',
+      'direct source documents',
+      'patient identifiers',
+      'human opinions',
+      'handoff responsibility',
+    ],
+    synthetic_only: true,
+  },
+  receipt: {
+    id: 'LOCAL-FABRIC-RP-CRC-EU-001-V1',
+    projection_id: 'RP-CRC-EU-001-V1',
+    projection_version: 1,
+    adapter: 'local-fabric-fake',
+    published_at: '2026-09-23T16:00:00Z',
+  },
+}
+
+function researchWorkspaceFetch(
+  researchHandler: (options?: RequestInit) => Promise<Response>,
+) {
+  return vi.fn((url: string, options?: RequestInit) => {
+    if (url === '/api/referrals/current') return response(referral)
+    if (url === '/api/cases/current') return response(preparedCase)
+    if (url === '/api/cases/current/update-error') return response(null)
+    if (url === '/api/cases/current/handoffs') return response([])
+    if (url === '/api/cases/current/review') {
+      return response({
+        current_case_version: 1,
+        opinion: null,
+        required_conditions: requiredConditions,
+        stale: false,
+        handoff_ready: false,
+        blockers: ['Human opinion is required.'],
+      })
+    }
+    if (url === '/api/research/authorize') return response(undefined, 204)
+    if (url === '/api/research/projection') return researchHandler(options)
+    throw new Error(`Unexpected request: ${url} ${options?.method}`)
+  })
+}
+
+describe('research authorization epilogue', () => {
+  it('shows a loading state while the authorized projection is retrieved', async () => {
+    let resolveResearch: ((value: Response) => void) | undefined
+    const pending = new Promise<Response>((resolve) => {
+      resolveResearch = resolve
+    })
+    vi.stubGlobal('fetch', researchWorkspaceFetch(() => pending))
+    const user = userEvent.setup()
+    render(<App />)
+
+    await screen.findByText('Clinical access stops here.')
+    await user.type(screen.getByLabelText('Research authorization code'), 'research-code')
+    await user.click(screen.getByRole('button', { name: /open synthetic research epilogue/i }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Loading approved research projection',
+    )
+    resolveResearch?.(await response(null))
+    expect(await screen.findByText('No approved projection published')).toBeInTheDocument()
+  })
+
+  it('shows clinical denial, empty state, allowlisted fields, and lineage', async () => {
+    const fetchMock = researchWorkspaceFetch((options) =>
+      options?.method === 'POST' ? response(researchPublication, 201) : response(null),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+    render(<App />)
+
+    expect(await screen.findByText('Clinical access stops here.')).toBeInTheDocument()
+    expect(screen.getByText(/Clinical role · denied/i)).toBeInTheDocument()
+    await user.type(screen.getByLabelText('Research authorization code'), 'research-code')
+    await user.click(screen.getByRole('button', { name: /open synthetic research epilogue/i }))
+
+    expect(await screen.findByText('No approved projection published')).toBeInTheDocument()
+    const authorization = fetchMock.mock.calls.find(
+      ([url]) => url === '/api/research/authorize',
+    )
+    expect(JSON.parse(String(authorization?.[1]?.body))).toEqual({
+      authorization_code: 'research-code',
+    })
+
+    await user.click(
+      screen.getByRole('button', { name: /publish approved synthetic projection/i }),
+    )
+
+    expect(
+      await screen.findByText('Cohort feasibility, not the clinical workspace.'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('research-cohort-v1')).toBeInTheDocument()
+    expect(
+      screen.getByText('Metastatic colorectal adenocarcinoma with liver metastases'),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/diagnosis-1 ← MIL-CDA-001/i)).toBeInTheDocument()
+    expect(screen.getByText(/workflow notes · direct source documents/i)).toBeInTheDocument()
+    expect(screen.queryByText(/preserved original record/i)).not.toBeInTheDocument()
+  })
+
+  it('keeps failed publication explicit and hides an unconfirmed cohort', async () => {
+    vi.stubGlobal(
+      'fetch',
+      researchWorkspaceFetch((options) =>
+        options?.method === 'POST'
+          ? response(
+              {
+                detail:
+                  'The local Fabric publication simulation failed; no projection was published.',
+              },
+              503,
+            )
+          : response(null),
+      ),
+    )
+    const user = userEvent.setup()
+    render(<App />)
+
+    await screen.findByText('Clinical access stops here.')
+    await user.type(screen.getByLabelText('Research authorization code'), 'research-code')
+    await user.click(screen.getByRole('button', { name: /open synthetic research epilogue/i }))
+    await screen.findByText('No approved projection published')
+    await user.click(
+      screen.getByRole('button', { name: /publish approved synthetic projection/i }),
+    )
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Publication failed')
+    expect(screen.getByRole('alert')).toHaveTextContent('no projection was published')
+    expect(screen.getByText('No unconfirmed projection is shown.')).toBeInTheDocument()
+    expect(screen.queryByText('Feasible synthetic cohort')).not.toBeInTheDocument()
+  })
+
+  it('offers an explicit publication update when the clinical case advances', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url === '/api/referrals/current') return response(referral)
+        if (url === '/api/cases/current') return response(updatedCase)
+        if (url === '/api/cases/current/update-error') return response(null)
+        if (url === '/api/cases/current/versions/1') return response(preparedCase)
+        if (url === '/api/cases/current/handoffs') return response([])
+        if (url === '/api/cases/current/review') {
+          return response({
+            current_case_version: 2,
+            opinion: null,
+            required_conditions: requiredConditions,
+            stale: false,
+            handoff_ready: false,
+            blockers: ['Human opinion is required.'],
+          })
+        }
+        if (url === '/api/research/authorize') return response(undefined, 204)
+        if (url === '/api/research/projection') return response(researchPublication)
+        throw new Error(`Unexpected request: ${url}`)
+      }),
+    )
+    const user = userEvent.setup()
+    render(<App />)
+
+    await screen.findByText('Clinical access stops here.')
+    await user.type(screen.getByLabelText('Research authorization code'), 'research-code')
+    await user.click(screen.getByRole('button', { name: /open synthetic research epilogue/i }))
+
+    expect(
+      await screen.findByText('New clinical evidence is not yet in the research projection'),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /publish case v2 projection/i }),
+    ).toBeInTheDocument()
+  })
+})

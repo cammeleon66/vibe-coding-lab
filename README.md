@@ -40,6 +40,15 @@ The approved product, architecture, reviews, and implementation plan live under
   responsibility, and demonstration labels.
 - A gated narrative deep link to the autonomous MDO demonstration. Version one
   explicitly uses a separate backend and does not synchronize runtime state.
+- A deep research-projection module with an exact synthetic field allowlist,
+  visible purpose, schema/projection version, field-level source lineage, and
+  explicit exclusions for workflow notes, direct source documents, identifiers,
+  human opinions, and handoff responsibility.
+- A separately authorized `synthetic-researcher` context, denied-by-default
+  clinical access, a local Fabric adapter fake, and a future OneLake adapter
+  seam without any Fabric or Azure resource changes.
+- A short cohort-feasibility epilogue covering authorization, loading, empty,
+  successful publication, and explicit publication-failure states.
 
 ## Run locally
 
@@ -52,6 +61,7 @@ Set-Location frontend
 npm install
 npm run build
 Set-Location ..
+$env:RESEARCH_DEMO_AUTHORIZATION_CODE = "choose-a-local-rehearsal-code"
 .\.venv\Scripts\uvicorn.exe collab.app:app --host 127.0.0.1 --port 8000
 ```
 
@@ -72,6 +82,10 @@ call or share state with the private MDO backend. Referral state, immutable case
 versions, reviews, manifests, processed event IDs, and update errors are restored
 from `data/demo-state.json` after restart.
 
+The research epilogue requires the separately configured local rehearsal code.
+The server exchanges it for an HTTP-only session cookie; the clinical UI cannot
+grant itself research access with a caller-controlled role header.
+
 Relevant local API routes:
 
 - `GET /api/referrals/current`
@@ -87,6 +101,9 @@ Relevant local API routes:
 - `GET /api/cases/current/handoffs`
 - `GET /api/cases/current/sources/{evidence_id}`
 - `POST /api/evidence-arrivals`
+- `POST /api/research/authorize`
+- `GET /api/research/projection` (authorized research session)
+- `POST /api/research/projection` (authorized research session)
 
 ## Validate
 
@@ -102,8 +119,8 @@ npm run build
 ```
 
 Current verified result (2026-09-23): backend formatting, Ruff lint, strict
-mypy, and 26 pytest tests pass with 96% statement coverage; frontend lint,
-9 Vitest behavior tests, and the production build pass.
+mypy, and 33 pytest tests pass with 97% statement coverage; frontend lint,
+12 Vitest behavior tests, and the production build pass.
 
 ## Current limitations
 
@@ -121,8 +138,13 @@ mypy, and 26 pytest tests pass with 96% statement coverage; frontend lint,
 - The MDO launch target is a configurable narrative deep link. Availability and
   matching-case readiness of the separate MDO application remain presentation
   preflight responsibilities; no private MDO backend integration exists.
-- Research projection, browser visual evidence, clinical-fidelity review, and
-  cloud adapters remain later approved increments.
+- Research authorization is a labeled local simulation using the
+  `X-Demo-Role` header, not production identity, consent, or workspace security.
+- The local Fabric adapter stores no external data. The OneLake interface is
+  only a future adapter seam; no cloud adapter or Fabric workspace integration
+  exists.
+- Browser visual evidence, clinical-fidelity review, and cloud adapters remain
+  later approved increments.
 
 Azure provisioning, Fabric changes, deployment, and live model usage require
 separate approval.

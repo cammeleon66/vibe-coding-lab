@@ -280,6 +280,37 @@ interface HandoffManifest {
   backend_notice: string
 }
 
+interface ResearchLineage {
+  field: string
+  prepared_claim_id: string
+  source_record_id: string
+  source_institution: string
+  source_format: string
+  source_pointer: string
+}
+
+interface ResearchPublication {
+  projection: {
+    id: string
+    purpose: string
+    version: number
+    schema_version: string
+    case_version: number
+    approved_fields: string[]
+    record: Record<string, string>
+    lineage: ResearchLineage[]
+    excluded_categories: string[]
+    synthetic_only: boolean
+  }
+  receipt: {
+    id: string
+    projection_id: string
+    projection_version: number
+    adapter: string
+    published_at: string
+  }
+}
+
 const initialNeed: ClinicalNeed = {
   case_id: 'CRC-EU-001',
   diagnosis: 'Metastatic colorectal cancer with liver-limited metastases',
@@ -324,6 +355,11 @@ function App() {
   const [caseUpdateError, setCaseUpdateError] = useState<CaseUpdateError | null>(null)
   const [reviewState, setReviewState] = useState<HumanReviewState | null>(null)
   const [handoffManifest, setHandoffManifest] = useState<HandoffManifest | null>(null)
+  const [researchOpen, setResearchOpen] = useState(false)
+  const [researchAuthorizationCode, setResearchAuthorizationCode] = useState('')
+  const [researchPublication, setResearchPublication] = useState<ResearchPublication | null>(null)
+  const [researchLoading, setResearchLoading] = useState(false)
+  const [researchError, setResearchError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -557,6 +593,48 @@ function App() {
     }
   }
 
+  async function openResearchEpilogue() {
+    setResearchLoading(true)
+    setResearchError(null)
+    try {
+      await requestJson<void>('/api/research/authorize', {
+        method: 'POST',
+        body: JSON.stringify({ authorization_code: researchAuthorizationCode }),
+      })
+      setResearchOpen(true)
+      const publication = await requestJson<ResearchPublication | null>(
+        '/api/research/projection',
+      )
+      setResearchPublication(publication)
+    } catch (reason) {
+      setResearchError(
+        reason instanceof Error ? reason.message : 'Research projection could not be loaded.',
+      )
+    } finally {
+      setResearchLoading(false)
+    }
+  }
+
+  async function publishResearchProjection() {
+    setResearchLoading(true)
+    setResearchError(null)
+    try {
+      const publication = await requestJson<ResearchPublication>(
+        '/api/research/projection',
+        {
+          method: 'POST',
+        },
+      )
+      setResearchPublication(publication)
+    } catch (reason) {
+      setResearchError(
+        reason instanceof Error ? reason.message : 'Research projection publication failed.',
+      )
+    } finally {
+      setResearchLoading(false)
+    }
+  }
+
   async function resetDemo() {
     setBusy(true)
     setError(null)
@@ -569,6 +647,11 @@ function App() {
       setCaseUpdateError(null)
       setReviewState(null)
       setHandoffManifest(null)
+      setResearchOpen(false)
+      setResearchAuthorizationCode('')
+      setResearchPublication(null)
+      setResearchLoading(false)
+      setResearchError(null)
       setMatches(null)
       setSelectedId(null)
       setSelectedClinicianId(null)
@@ -639,11 +722,19 @@ function App() {
           caseUpdateError={caseUpdateError}
           reviewState={reviewState}
           handoffManifest={handoffManifest}
+          researchOpen={researchOpen}
+          researchAuthorizationCode={researchAuthorizationCode}
+          researchPublication={researchPublication}
+          researchLoading={researchLoading}
+          researchError={researchError}
           inspectedSource={inspectedSource}
           onInspectSource={inspectSource}
           onDeliverImaging={deliverImagingEvidence}
           onSaveReview={saveHumanReview}
           onCreateHandoff={createMdoHandoff}
+          onOpenResearch={openResearchEpilogue}
+          onResearchAuthorizationCodeChange={setResearchAuthorizationCode}
+          onPublishResearch={publishResearchProjection}
           onCloseSource={() => setInspectedSource(null)}
           onReset={resetDemo}
         />
@@ -1009,11 +1100,19 @@ function PreparedWorkspace({
   caseUpdateError,
   reviewState,
   handoffManifest,
+  researchOpen,
+  researchAuthorizationCode,
+  researchPublication,
+  researchLoading,
+  researchError,
   inspectedSource,
   onInspectSource,
   onDeliverImaging,
   onSaveReview,
   onCreateHandoff,
+  onOpenResearch,
+  onResearchAuthorizationCodeChange,
+  onPublishResearch,
   onCloseSource,
   onReset,
 }: {
@@ -1024,6 +1123,11 @@ function PreparedWorkspace({
   caseUpdateError: CaseUpdateError | null
   reviewState: HumanReviewState | null
   handoffManifest: HandoffManifest | null
+  researchOpen: boolean
+  researchAuthorizationCode: string
+  researchPublication: ResearchPublication | null
+  researchLoading: boolean
+  researchError: string | null
   inspectedSource: EvidenceEnvelope | null
   onInspectSource: (evidenceId: string, version?: number) => void
   onDeliverImaging: () => void
@@ -1042,6 +1146,9 @@ function PreparedWorkspace({
     }
   }) => void
   onCreateHandoff: () => void
+  onOpenResearch: () => void
+  onResearchAuthorizationCodeChange: (value: string) => void
+  onPublishResearch: () => void
   onCloseSource: () => void
   onReset: () => void
 }) {
@@ -1205,8 +1312,174 @@ function PreparedWorkspace({
         </aside>
       </div>
 
+      <ResearchEpilogue
+        open={researchOpen}
+        authorizationCode={researchAuthorizationCode}
+        publication={researchPublication}
+        currentCaseVersion={preparedCase.version}
+        loading={researchLoading}
+        error={researchError}
+        onOpen={onOpenResearch}
+        onAuthorizationCodeChange={onResearchAuthorizationCodeChange}
+        onPublish={onPublishResearch}
+      />
+
       {inspectedSource && (
         <SourceInspector evidence={inspectedSource} onClose={onCloseSource} />
+      )}
+    </section>
+  )
+}
+
+function ResearchEpilogue({
+  open,
+  authorizationCode,
+  publication,
+  currentCaseVersion,
+  loading,
+  error,
+  onOpen,
+  onAuthorizationCodeChange,
+  onPublish,
+}: {
+  open: boolean
+  authorizationCode: string
+  publication: ResearchPublication | null
+  currentCaseVersion: number
+  loading: boolean
+  error: string | null
+  onOpen: () => void
+  onAuthorizationCodeChange: (value: string) => void
+  onPublish: () => void
+}) {
+  if (!open) {
+    return (
+      <section className="research-boundary" aria-label="Research authorization boundary">
+        <div>
+          <p className="eyebrow">Second horizon · separate authorization context</p>
+          <h2>Clinical access stops here.</h2>
+          <p>
+            The clinical role cannot read or publish the research projection. Continue only as
+            the separately authorized synthetic research role.
+          </p>
+        </div>
+        <div className="role-gate">
+          <span><CircleAlert size={16} /> Clinical role · denied</span>
+          <label>
+            Research authorization code
+            <input
+              type="password"
+              value={authorizationCode}
+              onChange={(event) => onAuthorizationCodeChange(event.target.value)}
+              autoComplete="off"
+            />
+          </label>
+          <button className="primary-action" onClick={onOpen} disabled={!authorizationCode}>
+            <ShieldCheck size={18} />
+            Open synthetic research epilogue
+          </button>
+        </div>
+      </section>
+    )
+  }
+
+  return (
+    <section className="research-epilogue" aria-label="Synthetic research cohort feasibility">
+      <div className="research-heading">
+        <div>
+          <p className="eyebrow">Synthetic researcher · separately authorized</p>
+          <h2>Cohort feasibility, not the clinical workspace.</h2>
+        </div>
+        <span><ShieldCheck size={16} /> Research role authorized</span>
+      </div>
+
+      {loading && (
+        <div className="research-state" role="status">
+          <Database size={20} />
+          Loading approved research projection…
+        </div>
+      )}
+
+      {!loading && error && (
+        <div className="research-state publication-failed" role="alert">
+          <CircleAlert size={20} />
+          <div>
+            <strong>Publication failed</strong>
+            <p>{error}</p>
+            <small>No unconfirmed projection is shown.</small>
+          </div>
+        </div>
+      )}
+
+      {!loading && !error && !publication && (
+        <div className="research-state">
+          <Database size={20} />
+          <div>
+            <strong>No approved projection published</strong>
+            <p>Publish the allowlisted synthetic fields to the local Fabric adapter fake.</p>
+          </div>
+          <button className="primary-action" onClick={onPublish}>
+            Publish approved synthetic projection
+          </button>
+        </div>
+      )}
+
+      {!loading && publication && (
+        <div className="cohort-view">
+          {publication.projection.case_version !== currentCaseVersion && (
+            <div className="research-state publication-stale" role="status">
+              <CircleAlert size={20} />
+              <div>
+                <strong>New clinical evidence is not yet in the research projection</strong>
+                <p>
+                  The confirmed projection covers case v{publication.projection.case_version};
+                  case v{currentCaseVersion} is current.
+                </p>
+              </div>
+              <button className="primary-action" onClick={onPublish}>
+                Publish case v{currentCaseVersion} projection
+              </button>
+            </div>
+          )}
+          <article className="cohort-count">
+            <span>Feasible synthetic cohort</span>
+            <strong>1</strong>
+            <p>case matches the approved local projection</p>
+          </article>
+          <article className="projection-detail">
+            <div>
+              <span>Purpose</span>
+              <p>{publication.projection.purpose}</p>
+            </div>
+            <div className="projection-meta">
+              <span>Projection v{publication.projection.version}</span>
+              <span>{publication.projection.schema_version}</span>
+              <span>Case v{publication.projection.case_version}</span>
+            </div>
+            <dl>
+              {publication.projection.approved_fields.map((field) => (
+                <div key={field}>
+                  <dt>{field.replaceAll('_', ' ')}</dt>
+                  <dd>{publication.projection.record[field]}</dd>
+                </div>
+              ))}
+            </dl>
+          </article>
+          <article className="lineage-view">
+            <h3>Field lineage</h3>
+            {publication.projection.lineage.map((item) => (
+              <div key={item.field}>
+                <strong>{item.field.replaceAll('_', ' ')}</strong>
+                <p>{item.source_institution} · {item.source_format}</p>
+                <small>{item.prepared_claim_id} ← {item.source_record_id} · {item.source_pointer}</small>
+              </div>
+            ))}
+            <p className="exclusion-note">
+              Excluded: {publication.projection.excluded_categories.join(' · ')}
+            </p>
+            <small>Receipt {publication.receipt.id} · {publication.receipt.adapter}</small>
+          </article>
+        </div>
       )}
     </section>
   )

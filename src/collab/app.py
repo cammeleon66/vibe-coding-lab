@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import hashlib
 import os
+import secrets
 from pathlib import Path
+from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import Cookie, FastAPI, HTTPException, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -28,10 +30,19 @@ from collab.models import (
     PreparedCase,
     Referral,
     ReferralCreate,
+    ResearchAuthorizationCreate,
+    ResearchPublication,
 )
 from collab.persistence import JsonStateStore
 from collab.preparation import CasePreparationService, PreparationError
 from collab.referrals import ReferralError, ReferralService
+from collab.research import (
+    LocalFabricAdapterFake,
+    OneLakeProjectionAdapter,
+    ResearchProjectionError,
+    ResearchProjectionModule,
+    ResearchPublicationError,
+)
 from collab.sources import MilanLateImagingSource, MilanLocalSource, UtrechtLocalSource
 
 
@@ -39,6 +50,8 @@ def create_app(
     state_path: Path | None = None,
     arrival_service: EvidenceArrivalService | None = None,
     mdo_base_url: str | None = None,
+    research_adapter: OneLakeProjectionAdapter | None = None,
+    research_authorization_code: str | None = None,
 ) -> FastAPI:
     directory = SyntheticExpertDirectory()
     referral_service = ReferralService(directory)
@@ -49,6 +62,11 @@ def create_app(
     )
     configured_mdo_url = mdo_base_url or os.getenv("MDO_DEMO_URL") or "http://localhost:5174"
     collaboration = CollaborationWorkflow(configured_mdo_url)
+    research = ResearchProjectionModule(research_adapter or LocalFabricAdapterFake())
+    configured_research_code = research_authorization_code or os.getenv(
+        "RESEARCH_DEMO_AUTHORIZATION_CODE"
+    )
+    research_sessions: set[str] = set()
     store = JsonStateStore(state_path or Path("data") / "demo-state.json")
 
     application = FastAPI(title="European oncology collaboration demo")
@@ -220,6 +238,112 @@ def create_app(
     )
     def handoff_history() -> list[HandoffManifest]:
         return store.load().handoff_manifests
+
+    def require_research_role(session: str | None) -> None:
+        if session is None or session not in research_sessions:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    "Research projection access requires the separately authorized "
+                    "synthetic-researcher role; clinical access is not inherited."
+                ),
+            )
+
+    @application.post("/api/research/authorize", status_code=status.HTTP_204_NO_CONTENT)
+    def authorize_research(
+        command: ResearchAuthorizationCreate,
+        response: Response,
+    ) -> None:
+        if configured_research_code is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Research authorization is not configured for this rehearsal.",
+            )
+        if not secrets.compare_digest(command.authorization_code, configured_research_code):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="The synthetic research authorization code is invalid.",
+            )
+        session = uuid4().hex
+        research_sessions.add(session)
+        response.set_cookie(
+            "research_demo_session",
+            session,
+            httponly=True,
+            samesite="strict",
+            secure=False,
+        )
+
+    @application.get(
+        "/api/research/projection",
+        response_model=ResearchPublication | None,
+    )
+    def current_research_projection(
+        research_demo_session: str | None = Cookie(default=None),
+    ) -> ResearchPublication | None:
+        require_research_role(research_demo_session)
+        return store.load().research_publication
+
+    @application.post(
+        "/api/research/projection",
+        response_model=ResearchPublication,
+        status_code=status.HTTP_201_CREATED,
+    )
+    def publish_research_projection(
+        research_demo_session: str | None = Cookie(default=None),
+    ) -> ResearchPublication:
+        require_research_role(research_demo_session)
+        with store.locked():
+            state = store.load()
+            if state.current_prepared_case is None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Prepare the synthetic case before publishing a research projection.",
+                )
+            try:
+                projection = research.project(state.current_prepared_case)
+            except ResearchProjectionError as error:
+                raise HTTPException(status_code=422, detail=str(error)) from error
+            pending = state.research_pending_projection
+            if pending is None or pending.id != projection.id:
+                try:
+                    store.save(state.model_copy(update={"research_pending_projection": projection}))
+                except OSError as error:
+                    raise HTTPException(
+                        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                        detail=(
+                            "The research projection could not enter the pending publication "
+                            "state; nothing was published."
+                        ),
+                    ) from error
+            try:
+                receipt = research.publish_projection(projection)
+            except ResearchPublicationError as error:
+                store.save(state.model_copy(update={"research_pending_projection": None}))
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=str(error),
+                ) from error
+            publication = ResearchPublication(projection=projection, receipt=receipt)
+            try:
+                latest = store.load()
+                store.save(
+                    latest.model_copy(
+                        update={
+                            "research_publication": publication,
+                            "research_pending_projection": None,
+                        }
+                    )
+                )
+            except OSError as error:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=(
+                        "The adapter accepted the idempotent projection but confirmation "
+                        "could not be persisted; retry to reconcile it."
+                    ),
+                ) from error
+            return publication
 
     @application.post(
         "/api/evidence-arrivals",

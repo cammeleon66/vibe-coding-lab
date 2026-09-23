@@ -357,6 +357,45 @@ class HandoffManifest(BaseModel):
     )
 
 
+class ResearchLineage(BaseModel):
+    field: str
+    prepared_claim_id: str
+    source_record_id: str
+    source_institution: str
+    source_format: str
+    source_pointer: str
+
+
+class ResearchProjection(BaseModel):
+    id: str
+    purpose: str
+    version: int
+    schema_version: str
+    case_version: int
+    approved_fields: list[str]
+    record: dict[str, str]
+    lineage: list[ResearchLineage]
+    excluded_categories: list[str]
+    synthetic_only: bool = True
+
+
+class ResearchPublicationReceipt(BaseModel):
+    id: str
+    projection_id: str
+    projection_version: int
+    adapter: str
+    published_at: datetime
+
+
+class ResearchPublication(BaseModel):
+    projection: ResearchProjection
+    receipt: ResearchPublicationReceipt
+
+
+class ResearchAuthorizationCreate(BaseModel):
+    authorization_code: str = Field(min_length=1)
+
+
 class DemoState(BaseModel):
     current_referral: Referral | None = None
     current_prepared_case: PreparedCase | None = None
@@ -365,6 +404,8 @@ class DemoState(BaseModel):
     case_update_error: CaseUpdateError | None = None
     human_opinions: list[HumanOpinion] = Field(default_factory=list)
     handoff_manifests: list[HandoffManifest] = Field(default_factory=list)
+    research_publication: ResearchPublication | None = None
+    research_pending_projection: ResearchProjection | None = None
 
 
 def utc_now() -> datetime:
