@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -8,15 +9,26 @@ from threading import RLock
 from typing import Any, Protocol, cast
 from urllib.parse import unquote, urlparse
 
+from azure.core import MatchConditions
 from azure.core.credentials import TokenCredential
-from azure.core.exceptions import AzureError, ResourceExistsError, ResourceNotFoundError
+from azure.core.exceptions import (
+    AzureError,
+    ResourceExistsError,
+    ResourceModifiedError,
+    ResourceNotFoundError,
+)
 from azure.storage.blob import ContainerClient, ContentSettings
 
 from collab.models import DemoState, EvidenceArrivalEvent, EvidenceEnvelope
+from collab.persistence import StateConflictError
 from collab.sources import MilanLateImagingSource, MilanLocalSource, UtrechtLocalSource
+
+logger = logging.getLogger("collab.azure")
 
 
 class DownloadStream(Protocol):
+    properties: Any
+
     def readall(self) -> bytes: ...
 
 
@@ -29,6 +41,8 @@ class BlobClient(Protocol):
         *,
         overwrite: bool = False,
         content_settings: ContentSettings | None = None,
+        etag: str | None = None,
+        match_condition: MatchConditions | None = None,
     ) -> Any: ...
 
     def delete_blob(self, *, delete_snapshots: str | None = None) -> Any: ...
@@ -107,6 +121,10 @@ class AzureMilanSource:
             for blob_name in self._mapping.values():
                 (root / blob_name).write_bytes(_download(self._container, blob_name))
             evidence = MilanLocalSource(root).read_snapshot(case_id)
+        logger.info(
+            "institution_source_read",
+            extra={"source": "milan", "case_id": case_id, "evidence_count": len(evidence)},
+        )
         return _with_azure_references(evidence, self._container, self._mapping)
 
 
@@ -125,6 +143,10 @@ class AzureUtrechtSource:
             for blob_name in self._mapping.values():
                 (root / blob_name).write_bytes(_download(self._container, blob_name))
             evidence = UtrechtLocalSource(root).read_snapshot(case_id)
+        logger.info(
+            "institution_source_read",
+            extra={"source": "utrecht", "case_id": case_id, "evidence_count": len(evidence)},
+        )
         return _with_azure_references(evidence, self._container, self._mapping)
 
 
@@ -143,6 +165,10 @@ class AzureLateImagingSource:
             for blob_name in self._mapping.values():
                 (root / blob_name).write_bytes(_download(self._container, blob_name))
             evidence = MilanLateImagingSource(root).read_arrival(event)
+        logger.info(
+            "late_evidence_source_read",
+            extra={"event_id": event.event_id, "evidence_count": len(evidence)},
+        )
         return _with_azure_references(evidence, self._container, self._mapping)
 
 
@@ -150,12 +176,16 @@ class AzureBlobStateStore:
     def __init__(self, container: BlobContainer, blob_name: str = "demo-state.json") -> None:
         self._blob = container.get_blob_client(blob_name)
         self._lock = RLock()
+        self._etag: str | None = None
 
     def load(self) -> DemoState:
         with self._lock:
             try:
-                content = self._blob.download_blob().readall()
+                download = self._blob.download_blob()
+                content = download.readall()
+                self._etag = str(download.properties.etag)
             except ResourceNotFoundError:
+                self._etag = None
                 return DemoState()
             except AzureError as error:
                 raise OSError(f"Azure collaboration state could not be read: {error}") from error
@@ -164,11 +194,25 @@ class AzureBlobStateStore:
     def save(self, state: DemoState) -> None:
         with self._lock:
             try:
-                self._blob.upload_blob(
-                    state.model_dump_json(indent=2),
-                    overwrite=True,
-                    content_settings=ContentSettings(content_type="application/json"),
-                )
+                if self._etag is not None:
+                    result = self._blob.upload_blob(
+                        state.model_dump_json(indent=2),
+                        overwrite=True,
+                        content_settings=ContentSettings(content_type="application/json"),
+                        etag=self._etag,
+                        match_condition=MatchConditions.IfNotModified,
+                    )
+                else:
+                    result = self._blob.upload_blob(
+                        state.model_dump_json(indent=2),
+                        overwrite=False,
+                        content_settings=ContentSettings(content_type="application/json"),
+                    )
+                self._etag = str(result["etag"])
+            except (ResourceExistsError, ResourceModifiedError) as error:
+                raise StateConflictError(
+                    "Azure collaboration state changed concurrently; reload before retrying."
+                ) from error
             except AzureError as error:
                 raise OSError(f"Azure collaboration state could not be written: {error}") from error
 

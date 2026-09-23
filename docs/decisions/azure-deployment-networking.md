@@ -19,6 +19,10 @@ The user approved a West Europe deployment in subscription
 - no Azure OpenAI or Fabric deployment;
 - teardown after 14 days.
 
+The deployment approval followed the durable recommendation in GitHub issue #6
+and the user response, “ok lets fix this.” It covered the Entra application and
+managed-identity role assignments described in that recommendation.
+
 ## Evidence from the deployment attempt
 
 The subscription created the approved base resources but forced

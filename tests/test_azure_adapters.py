@@ -5,7 +5,12 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
+from azure.core import MatchConditions
+from azure.core.exceptions import (
+    ResourceExistsError,
+    ResourceModifiedError,
+    ResourceNotFoundError,
+)
 from azure.storage.blob import ContentSettings
 from fastapi.testclient import TestClient
 
@@ -18,27 +23,34 @@ from collab.azure_adapters import (
     AzureUtrechtSource,
 )
 from collab.models import DemoState, EvidenceArrivalEvent
-from collab.persistence import JsonStateStore
+from collab.persistence import JsonStateStore, StateConflictError
 from collab.sources import MilanLateImagingSource, MilanLocalSource, UtrechtLocalSource
 
 
 class FakeDownload:
-    def __init__(self, content: bytes) -> None:
+    def __init__(self, content: bytes, etag: str) -> None:
         self._content = content
+        self.properties = SimpleNamespace(etag=etag)
 
     def readall(self) -> bytes:
         return self._content
 
 
 class FakeBlob:
-    def __init__(self, blobs: dict[str, bytes], name: str) -> None:
+    def __init__(
+        self,
+        blobs: dict[str, bytes],
+        etags: dict[str, int],
+        name: str,
+    ) -> None:
         self._blobs = blobs
+        self._etags = etags
         self._name = name
 
     def download_blob(self) -> FakeDownload:
         if self._name not in self._blobs:
             raise ResourceNotFoundError("missing")
-        return FakeDownload(self._blobs[self._name])
+        return FakeDownload(self._blobs[self._name], str(self._etags[self._name]))
 
     def upload_blob(
         self,
@@ -46,15 +58,24 @@ class FakeBlob:
         *,
         overwrite: bool = False,
         content_settings: ContentSettings | None = None,
-    ) -> None:
+        etag: str | None = None,
+        match_condition: MatchConditions | None = None,
+    ) -> dict[str, str]:
         del content_settings
         if self._name in self._blobs and not overwrite:
             raise ResourceExistsError("exists")
+        if match_condition == MatchConditions.IfNotModified and etag != str(
+            self._etags.get(self._name)
+        ):
+            raise ResourceModifiedError("changed")
         self._blobs[self._name] = data.encode() if isinstance(data, str) else data
+        self._etags[self._name] = self._etags.get(self._name, 0) + 1
+        return {"etag": str(self._etags[self._name])}
 
     def delete_blob(self, *, delete_snapshots: str | None = None) -> None:
         del delete_snapshots
         self._blobs.pop(self._name, None)
+        self._etags.pop(self._name, None)
 
 
 class FakeContainer:
@@ -62,9 +83,10 @@ class FakeContainer:
         self.container_name = name
         self.url = f"https://synthetic.blob.core.windows.net/{name}"
         self.blobs = blobs or {}
+        self.etags = {blob_name: 1 for blob_name in self.blobs}
 
     def get_blob_client(self, blob: str) -> FakeBlob:
-        return FakeBlob(self.blobs, blob)
+        return FakeBlob(self.blobs, self.etags, blob)
 
     def list_blobs(self, *, name_starts_with: str | None = None) -> Iterator[Any]:
         for name in list(self.blobs):
@@ -119,6 +141,13 @@ def test_azure_state_and_trigger_adapters_are_persistent_and_resettable() -> Non
     state.save(DemoState(processed_evidence_events={"event-1": "fingerprint"}))
 
     assert state.load().processed_evidence_events == {"event-1": "fingerprint"}
+    shared.etags["demo-state.json"] += 1
+    try:
+        state.save(DemoState())
+    except StateConflictError:
+        pass
+    else:
+        raise AssertionError("A stale Azure Blob ETag must reject state overwrite.")
 
     milan = FakeContainer("source")
     publisher = AzureBlobEvidenceArrivalPublisher(milan)

@@ -11,6 +11,10 @@ from typing import Protocol
 from collab.models import DemoState
 
 
+class StateConflictError(OSError):
+    pass
+
+
 class StateStore(Protocol):
     def load(self) -> DemoState: ...
 

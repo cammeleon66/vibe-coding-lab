@@ -56,7 +56,7 @@ resource evidenceSubscription 'Microsoft.EventGrid/systemTopics/eventSubscriptio
       includedEventTypes: [
         'Microsoft.Storage.BlobCreated'
       ]
-      subjectBeginsWith: '/blobServices/default/containers/source/blobs/events/'
+      subjectBeginsWith: '/blobServices/default/containers/events/blobs/'
     }
     retryPolicy: {
       eventTimeToLiveInMinutes: 30

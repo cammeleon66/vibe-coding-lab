@@ -84,6 +84,10 @@ resource application 'Microsoft.App/containerApps@2025-01-01' = {
               value: milanAccountUrl
             }
             {
+              name: 'MILAN_EVENT_CONTAINER'
+              value: 'events'
+            }
+            {
               name: 'UTRECHT_STORAGE_ACCOUNT_URL'
               value: utrechtAccountUrl
             }

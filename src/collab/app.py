@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import secrets
 from pathlib import Path
@@ -11,7 +12,7 @@ from uuid import uuid4
 from azure.identity import DefaultAzureCredential
 from fastapi import Cookie, FastAPI, Header, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from collab.arrivals import EvidenceArrivalError, EvidenceArrivalService
@@ -52,7 +53,7 @@ from collab.models import (
     Urgency,
     utc_now,
 )
-from collab.persistence import JsonStateStore, StateStore
+from collab.persistence import JsonStateStore, StateConflictError, StateStore
 from collab.preparation import CasePreparationService, PreparationError
 from collab.referrals import ReferralError, ReferralService
 from collab.research import (
@@ -77,6 +78,9 @@ class EvidenceArrivalPublisher(Protocol):
     def read_event(self, blob_url: str) -> EvidenceArrivalEvent: ...
 
     def reset(self) -> None: ...
+
+
+logger = logging.getLogger("collab")
 
 
 def create_app(
@@ -118,6 +122,11 @@ def create_app(
             os.getenv("MILAN_SOURCE_CONTAINER", "source"),
             credential,
         )
+        milan_event_container = create_container_client(
+            os.environ["MILAN_STORAGE_ACCOUNT_URL"],
+            os.getenv("MILAN_EVENT_CONTAINER", "events"),
+            credential,
+        )
         utrecht_container = create_container_client(
             os.environ["UTRECHT_STORAGE_ACCOUNT_URL"],
             os.getenv("UTRECHT_SOURCE_CONTAINER", "source"),
@@ -134,7 +143,7 @@ def create_app(
         ]
         configured_late_source: EvidenceArrivalSource = AzureLateImagingSource(milan_container)
         configured_publisher = configured_publisher or AzureBlobEvidenceArrivalPublisher(
-            milan_container
+            milan_event_container
         )
         store = state_store or AzureBlobStateStore(shared_container)
     else:
@@ -170,6 +179,14 @@ def create_app(
             )
 
     application = FastAPI(title="European oncology collaboration demo")
+
+    @application.exception_handler(StateConflictError)
+    async def state_conflict_handler(
+        _request: Request,
+        error: StateConflictError,
+    ) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(error)})
+
     application.add_middleware(
         CORSMiddleware,
         allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
@@ -363,12 +380,14 @@ def create_app(
         status_code=status.HTTP_201_CREATED,
     )
     def create_referral(command: ReferralCreate) -> Referral:
-        try:
-            referral = referral_service.create(command)
-        except ReferralError as error:
-            raise HTTPException(status_code=422, detail=str(error)) from error
-        store.save(DemoState(current_referral=referral))
-        return referral
+        with store.locked():
+            try:
+                referral = referral_service.create(command)
+            except ReferralError as error:
+                raise HTTPException(status_code=422, detail=str(error)) from error
+            store.save(DemoState(current_referral=referral))
+            logger.info("referral_created", extra={"referral_id": referral.id})
+            return referral
 
     @application.get("/api/cases/current", response_model=PreparedCase | None)
     def current_case() -> PreparedCase | None:
@@ -376,24 +395,29 @@ def create_app(
 
     @application.post("/api/cases/current/prepare", response_model=PreparedCase)
     def prepare_current_case() -> PreparedCase:
-        state = store.load()
-        if state.current_referral is None:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Create a referral before preparing the clinical workspace.",
+        with store.locked():
+            state = store.load()
+            if state.current_referral is None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Create a referral before preparing the clinical workspace.",
+                )
+            try:
+                prepared = preparation_service.prepare(state.current_referral)
+            except PreparationError as error:
+                raise HTTPException(status_code=422, detail=str(error)) from error
+            store.save(
+                DemoState(
+                    current_referral=state.current_referral,
+                    current_prepared_case=prepared,
+                    prepared_case_versions=[prepared],
+                )
             )
-        try:
-            prepared = preparation_service.prepare(state.current_referral)
-        except PreparationError as error:
-            raise HTTPException(status_code=422, detail=str(error)) from error
-        store.save(
-            DemoState(
-                current_referral=state.current_referral,
-                current_prepared_case=prepared,
-                prepared_case_versions=[prepared],
+            logger.info(
+                "case_prepared",
+                extra={"case_id": prepared.case_id, "case_version": prepared.version},
             )
-        )
-        return prepared
+            return prepared
 
     @application.get(
         "/api/cases/current/versions",
@@ -496,6 +520,14 @@ def create_app(
                 raise HTTPException(status_code=422, detail=str(error)) from error
             store.save(
                 state.model_copy(update={"handoff_manifests": [*state.handoff_manifests, manifest]})
+            )
+            logger.info(
+                "handoff_created",
+                extra={
+                    "case_id": manifest.case_id,
+                    "case_version": manifest.evidence_version,
+                    "manifest_id": manifest.id,
+                },
             )
             return manifest
 
@@ -649,6 +681,13 @@ def create_app(
                     preserved_version=state.current_prepared_case.version,
                 )
                 store.save(state.model_copy(update={"case_update_error": update_error}))
+                logger.warning(
+                    "evidence_refresh_failed",
+                    extra={
+                        "event_id": event.event_id,
+                        "preserved_version": update_error.preserved_version,
+                    },
+                )
                 raise HTTPException(status_code=422, detail=str(error)) from error
             next_state = state.model_copy(
                 update={
@@ -671,6 +710,15 @@ def create_app(
                         f"case v{state.current_prepared_case.version} remains current."
                     ),
                 ) from error
+            logger.info(
+                "case_version_advanced",
+                extra={
+                    "case_id": refreshed.case_id,
+                    "event_id": event.event_id,
+                    "from_version": state.current_prepared_case.version,
+                    "to_version": refreshed.version,
+                },
+            )
             return EvidenceArrivalResult(
                 event_id=event.event_id,
                 duplicate=False,
@@ -765,6 +813,10 @@ def create_app(
             except (OSError, ValueError) as error:
                 raise HTTPException(status_code=422, detail=str(error)) from error
             accepted.append(event.event_id)
+            logger.info(
+                "event_grid_delivery_accepted",
+                extra={"event_id": event.event_id},
+            )
         return {"accepted_event_ids": accepted}
 
     @application.get(
@@ -799,9 +851,11 @@ def create_app(
     @application.post("/api/reset", status_code=status.HTTP_204_NO_CONTENT)
     def reset(response: Response) -> None:
         try:
-            store.save(DemoState())
-            if configured_publisher is not None:
-                configured_publisher.reset()
+            with store.locked():
+                store.load()
+                store.save(DemoState())
+                if configured_publisher is not None:
+                    configured_publisher.reset()
         except OSError as error:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

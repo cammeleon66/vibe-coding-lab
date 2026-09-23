@@ -2,7 +2,7 @@
 
 **Status:** Approved architecture; implementation may proceed locally
 **Date:** 2026-09-23
-**Cloud provisioning:** Not approved
+**Cloud provisioning:** Approved baseline attempted; blocked on revised private-networking cost
 
 ## Implementation strategy
 
@@ -424,9 +424,15 @@ Replace local adapters with Azure adapters through existing seams, verify the de
 - Azure Blob institution-source adapters preserve original source content and
   replace local retrieval references with Blob references.
 - Azure Blob collaboration-state persistence implements the existing state-store
-  seam.
+  seam and rejects stale writes with Blob ETag preconditions.
 - A Blob trigger publisher and authenticated Event Grid webhook preserve the
   idempotent late-evidence flow.
+- The runtime identity reads Milan and Utrecht source accounts, writes shared
+  collaboration state, and writes only a separate Milan `events` container;
+  source evidence remains read-only.
+- Azure Monitor auto-instrumentation records request latency, while structured
+  content-free events record source reads, case-version transitions, failed
+  refreshes, accepted Event Grid deliveries, and MDO handoff creation.
 - The Azure runtime keeps deterministic synthesis, excludes Azure OpenAI, and
   leaves the Fabric research adapter disabled.
 - Bicep defines tagged resource groups, managed identity, least-privilege Blob
@@ -462,8 +468,9 @@ The exact commands will be established with the application scaffold. At minimum
 ## Next action
 
 INC-006 is complete locally and ready for external clinical-fidelity review.
-That review remains a presentation gate. `INC-007` remains blocked on the
-existing cost, identity, Fabric, monitoring, deployment, and teardown
-approvals. No Azure or Fabric resources were provisioned or modified, no trust
-boundary was expanded beyond the approved local simulation, no private MDO
-backend was integrated, and no live AI was added.
+That review remains a presentation gate. `INC-007` remains blocked on revised
+networking and cost approval. The approved base Azure resources were briefly
+created, the subscription-enforced private-network constraint was verified, and
+all created resources and the budget were then deleted. No application became
+live, no Azure resources remain, no Fabric workspace was modified, no private
+MDO backend was integrated, and no live AI was added.

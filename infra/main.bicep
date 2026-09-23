@@ -59,7 +59,8 @@ module milan 'storage.bicep' = {
     storageAccountName: take('ocdmilan${suffix}', 24)
     containerName: 'source'
     principalId: platform.outputs.identityPrincipalId
-    roleDefinitionId: blobContributorRole
+    roleDefinitionId: blobReaderRole
+    writeContainerName: 'events'
     tags: commonTags
   }
 }
@@ -135,6 +136,7 @@ output insightsName string = platform.outputs.insightsName
 output insightsConnectionString string = platform.outputs.insightsConnectionString
 output milanAccountName string = milan.outputs.accountName
 output milanAccountUrl string = milan.outputs.accountUrl
+output milanEventContainerName string = milan.outputs.writeContainerName
 output utrechtAccountName string = utrecht.outputs.accountName
 output utrechtAccountUrl string = utrecht.outputs.accountUrl
 output sharedAccountName string = shared.outputs.accountName

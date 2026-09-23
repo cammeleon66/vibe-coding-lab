@@ -90,6 +90,12 @@ flowchart TB
 
 The diagrams describe logical isolation for the demonstration. They do not claim to reproduce the real systems, tenancy, permissions, or governance of the named institutions.
 
+Version one implements Event Grid delivery for the approved late-imaging event
+from the Milan source. Utrecht remains readable through its source adapter, but
+an Utrecht event subscription is deferred until a concrete Utrecht-originating
+evidence-arrival requirement and parser exist. Creating an unused subscription
+would imply unsupported behavior and add no current reliability evidence.
+
 ## Deep modules and seams
 
 ### Expert discovery module
@@ -363,3 +369,21 @@ Before deployment, create a region-specific Azure Pricing Calculator estimate an
 **Approved scope:** Container Apps application; Milan, Utrecht, and shared Blob Storage zones; Event Grid evidence updates; existing Fabric capacity for research only; no Azure Health Data Services; presenter Entra access with simulated clinician roles; deterministic rehearsal; optional separately approved Azure OpenAI; narrative MDO handoff.
 **Not approved:** Azure provisioning, deployment, identity creation, role assignments, Fabric workspace creation or modification, Azure OpenAI usage, or ongoing cloud spend.
 **Re-approval conditions:** Material change to the operational backend, source-isolation model, identity model, Fabric role, AI runtime, MDO integration, or meaningful cost profile.
+
+## Deployment approval update
+
+**Decision:** The user approved proceeding with the concrete recommended
+deployment by replying, “ok lets fix this,” after the repository recorded the
+West Europe subscription, resource prefix, EUR 10 budget alert, presenter Entra
+application, managed-identity role assignments, bounded monitoring, disabled
+Azure OpenAI, deferred Fabric integration, and 14-day teardown plan.
+
+**Date:** 2026-09-23
+**Approved scope:** The exact baseline above, including identity creation and
+least-privilege role assignments required by that deployment.
+**Outcome:** Provisioning exposed a subscription-enforced private-networking
+constraint. The application did not become live and all created resources were
+deleted.
+**Current status:** The approval is no longer sufficient because private
+endpoints materially change the expected cost. DEC-007 requires a new decision
+before another deployment attempt.
