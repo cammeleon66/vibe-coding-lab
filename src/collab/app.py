@@ -4,14 +4,28 @@ import hashlib
 import os
 import secrets
 from pathlib import Path
+from time import monotonic, sleep
+from typing import Protocol
 from uuid import uuid4
 
-from fastapi import Cookie, FastAPI, HTTPException, Response, status
+from azure.identity import DefaultAzureCredential
+from fastapi import Cookie, FastAPI, Header, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from collab.arrivals import EvidenceArrivalError, EvidenceArrivalService
+from collab.azure_adapters import (
+    AzureBlobEvidenceArrivalPublisher,
+    AzureBlobStateStore,
+    AzureLateImagingSource,
+    AzureMilanSource,
+    AzureUtrechtSource,
+    create_container_client,
+    event_grid_blob_url,
+    parse_event_grid_payload,
+    subscription_validation_code,
+)
 from collab.directory import SyntheticExpertDirectory
 from collab.handoff import CollaborationWorkflow, HandoffError
 from collab.models import (
@@ -38,7 +52,7 @@ from collab.models import (
     Urgency,
     utc_now,
 )
-from collab.persistence import JsonStateStore
+from collab.persistence import JsonStateStore, StateStore
 from collab.preparation import CasePreparationService, PreparationError
 from collab.referrals import ReferralError, ReferralService
 from collab.research import (
@@ -48,7 +62,21 @@ from collab.research import (
     ResearchProjectionModule,
     ResearchPublicationError,
 )
-from collab.sources import MilanLateImagingSource, MilanLocalSource, UtrechtLocalSource
+from collab.sources import (
+    EvidenceArrivalSource,
+    InstitutionSource,
+    MilanLateImagingSource,
+    MilanLocalSource,
+    UtrechtLocalSource,
+)
+
+
+class EvidenceArrivalPublisher(Protocol):
+    def publish(self, event: EvidenceArrivalEvent) -> None: ...
+
+    def read_event(self, blob_url: str) -> EvidenceArrivalEvent: ...
+
+    def reset(self) -> None: ...
 
 
 def create_app(
@@ -59,17 +87,68 @@ def create_app(
     research_authorization_code: str | None = None,
     frontend_dist: Path | None = None,
     fixture_root: Path | None = None,
+    state_store: StateStore | None = None,
+    institution_sources: list[InstitutionSource] | None = None,
+    late_imaging_source: EvidenceArrivalSource | None = None,
+    arrival_publisher: EvidenceArrivalPublisher | None = None,
+    runtime_mode: str | None = None,
+    event_grid_webhook_secret: str | None = None,
 ) -> FastAPI:
     repository_root = Path(__file__).resolve().parents[2]
     configured_fixture_root = fixture_root or Path(__file__).parent / "fixtures"
+    configured_runtime_mode = runtime_mode or os.getenv("APP_RUNTIME_MODE") or "local"
+    reported_runtime_mode = (
+        "synthetic-rehearsal"
+        if configured_runtime_mode == "local"
+        else f"{configured_runtime_mode}-synthetic-rehearsal"
+    )
+    configured_event_grid_secret = event_grid_webhook_secret or os.getenv(
+        "EVENT_GRID_WEBHOOK_SECRET"
+    )
     directory = SyntheticExpertDirectory(configured_fixture_root / "expert_centres.json")
     referral_service = ReferralService(directory)
-    milan_source = MilanLocalSource(configured_fixture_root / "milan")
-    utrecht_source = UtrechtLocalSource(configured_fixture_root / "utrecht")
-    late_imaging_source = MilanLateImagingSource(configured_fixture_root / "milan")
-    preparation_service = CasePreparationService([milan_source, utrecht_source])
+    configured_publisher = arrival_publisher
+    if configured_runtime_mode == "azure" and institution_sources is None:
+        credential = DefaultAzureCredential(
+            managed_identity_client_id=os.getenv("AZURE_CLIENT_ID"),
+            exclude_interactive_browser_credential=True,
+        )
+        milan_container = create_container_client(
+            os.environ["MILAN_STORAGE_ACCOUNT_URL"],
+            os.getenv("MILAN_SOURCE_CONTAINER", "source"),
+            credential,
+        )
+        utrecht_container = create_container_client(
+            os.environ["UTRECHT_STORAGE_ACCOUNT_URL"],
+            os.getenv("UTRECHT_SOURCE_CONTAINER", "source"),
+            credential,
+        )
+        shared_container = create_container_client(
+            os.environ["SHARED_STORAGE_ACCOUNT_URL"],
+            os.getenv("SHARED_STATE_CONTAINER", "collaboration"),
+            credential,
+        )
+        configured_sources: list[InstitutionSource] = [
+            AzureMilanSource(milan_container),
+            AzureUtrechtSource(utrecht_container),
+        ]
+        configured_late_source: EvidenceArrivalSource = AzureLateImagingSource(milan_container)
+        configured_publisher = configured_publisher or AzureBlobEvidenceArrivalPublisher(
+            milan_container
+        )
+        store = state_store or AzureBlobStateStore(shared_container)
+    else:
+        configured_sources = institution_sources or [
+            MilanLocalSource(configured_fixture_root / "milan"),
+            UtrechtLocalSource(configured_fixture_root / "utrecht"),
+        ]
+        configured_late_source = late_imaging_source or MilanLateImagingSource(
+            configured_fixture_root / "milan"
+        )
+        store = state_store or JsonStateStore(state_path or Path("data") / "demo-state.json")
+    preparation_service = CasePreparationService(configured_sources)
     evidence_arrivals = arrival_service or EvidenceArrivalService(
-        late_imaging_source,
+        configured_late_source,
         preparation_service,
     )
     configured_mdo_url = mdo_base_url or os.getenv("MDO_DEMO_URL") or "http://localhost:5174"
@@ -79,7 +158,16 @@ def create_app(
         "RESEARCH_DEMO_AUTHORIZATION_CODE"
     )
     research_sessions: set[str] = set()
-    store = JsonStateStore(state_path or Path("data") / "demo-state.json")
+
+    if configured_runtime_mode == "azure":
+        connection_string = os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING")
+        if connection_string:
+            from azure.monitor.opentelemetry import configure_azure_monitor
+
+            configure_azure_monitor(
+                connection_string=connection_string,
+                logger_name="collab",
+            )
 
     application = FastAPI(title="European oncology collaboration demo")
     application.add_middleware(
@@ -92,7 +180,7 @@ def create_app(
 
     @application.get("/api/health")
     def health() -> dict[str, str]:
-        return {"status": "ok", "mode": "synthetic-rehearsal"}
+        return {"status": "ok", "mode": reported_runtime_mode}
 
     @application.get("/api/preflight", response_model=PreflightReport)
     def preflight() -> PreflightReport:
@@ -106,11 +194,15 @@ def create_app(
             configured_fixture_root / "utrecht" / "referral.fhir.json",
             configured_fixture_root / "utrecht" / "review-requirements.json",
         ]
-        missing_fixtures = [
-            path.relative_to(configured_fixture_root).as_posix()
-            for path in required_fixtures
-            if not path.is_file() or path.stat().st_size == 0
-        ]
+        missing_fixtures = (
+            [
+                path.relative_to(configured_fixture_root).as_posix()
+                for path in required_fixtures
+                if not path.is_file() or path.stat().st_size == 0
+            ]
+            if configured_runtime_mode == "local"
+            else []
+        )
         invalid_fixture_detail: str | None = None
         if not missing_fixtures:
             try:
@@ -145,7 +237,10 @@ def create_app(
                 id="runtime-mode",
                 label="Deterministic runtime",
                 status="pass",
-                detail="Synthetic rehearsal mode is active; no live AI adapter is configured.",
+                detail=(
+                    f"{configured_runtime_mode.title()} synthetic rehearsal mode is active; "
+                    "no live AI adapter is configured."
+                ),
             ),
             PreflightCheck(
                 id="fixtures",
@@ -174,18 +269,30 @@ def create_app(
             checks.append(
                 PreflightCheck(
                     id="state-store",
-                    label="Local state store",
+                    label=(
+                        "Azure collaboration state"
+                        if configured_runtime_mode == "azure"
+                        else "Local state store"
+                    ),
                     status="fail",
-                    detail=f"Local state cannot be loaded or written: {error}",
+                    detail=f"Collaboration state cannot be loaded or written: {error}",
                 )
             )
         else:
             checks.append(
                 PreflightCheck(
                     id="state-store",
-                    label="Local state store",
+                    label=(
+                        "Azure collaboration state"
+                        if configured_runtime_mode == "azure"
+                        else "Local state store"
+                    ),
                     status="pass",
-                    detail="Local rehearsal state can be loaded and atomically written.",
+                    detail=(
+                        "Azure Blob collaboration state can be loaded and written."
+                        if configured_runtime_mode == "azure"
+                        else "Local rehearsal state can be loaded and atomically written."
+                    ),
                 )
             )
         frontend_index = (frontend_dist or repository_root / "frontend" / "dist") / "index.html"
@@ -225,10 +332,19 @@ def create_app(
         )
         return PreflightReport(
             ready=all(check.status != "fail" for check in checks if check.required),
+            mode=reported_runtime_mode,
             checked_at=utc_now(),
             checks=checks,
             limitations=[
-                "Preflight does not contact Azure, Fabric, the autonomous MDO backend, or live AI.",
+                (
+                    "Preflight exercises approved Azure Blob adapters but does not contact "
+                    "Fabric, the autonomous MDO backend, or live AI."
+                    if configured_runtime_mode == "azure"
+                    else (
+                        "Preflight does not contact Azure, Fabric, the autonomous MDO "
+                        "backend, or live AI."
+                    )
+                ),
                 "Clinical fidelity remains subject to external oncology review.",
             ],
         )
@@ -422,7 +538,7 @@ def create_app(
             session,
             httponly=True,
             samesite="strict",
-            secure=False,
+            secure=configured_runtime_mode == "azure",
         )
 
     @application.get(
@@ -496,11 +612,7 @@ def create_app(
                 ) from error
             return publication
 
-    @application.post(
-        "/api/evidence-arrivals",
-        response_model=EvidenceArrivalResult,
-    )
-    def receive_evidence(event: EvidenceArrivalEvent) -> EvidenceArrivalResult:
+    def apply_evidence_event(event: EvidenceArrivalEvent) -> EvidenceArrivalResult:
         with store.locked():
             state = store.load()
             if state.current_referral is None or state.current_prepared_case is None:
@@ -565,6 +677,96 @@ def create_app(
                 prepared_case=refreshed,
             )
 
+    @application.post(
+        "/api/evidence-arrivals",
+        response_model=EvidenceArrivalResult,
+    )
+    def receive_evidence(event: EvidenceArrivalEvent) -> EvidenceArrivalResult:
+        if configured_publisher is None:
+            return apply_evidence_event(event)
+
+        state = store.load()
+        if state.current_referral is None or state.current_prepared_case is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Prepare the current case before delivering late evidence.",
+            )
+        if event.event_id in state.processed_evidence_events:
+            return EvidenceArrivalResult(
+                event_id=event.event_id,
+                duplicate=True,
+                prepared_case=state.current_prepared_case,
+            )
+        try:
+            configured_publisher.publish(event)
+        except OSError as error:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=str(error),
+            ) from error
+
+        deadline = monotonic() + 20
+        while monotonic() < deadline:
+            latest = store.load()
+            if event.event_id in latest.processed_evidence_events:
+                if latest.current_prepared_case is None:
+                    break
+                return EvidenceArrivalResult(
+                    event_id=event.event_id,
+                    duplicate=False,
+                    prepared_case=latest.current_prepared_case,
+                )
+            if (
+                latest.case_update_error is not None
+                and latest.case_update_error.event_id == event.event_id
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail=latest.case_update_error.message,
+                )
+            sleep(0.25)
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail=(
+                "The Azure evidence trigger was published, but Event Grid did not confirm "
+                "the case refresh within 20 seconds."
+            ),
+        )
+
+    @application.post("/api/event-grid/evidence-arrivals")
+    async def receive_event_grid_evidence(
+        request: Request,
+        x_event_grid_secret: str | None = Header(default=None),
+    ) -> dict[str, object]:
+        try:
+            events = parse_event_grid_payload(await request.json())
+        except (ValueError, TypeError) as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        validation_code = subscription_validation_code(events)
+        if validation_code is not None:
+            return {"validationResponse": validation_code}
+        if (
+            configured_publisher is None
+            or configured_event_grid_secret is None
+            or not secrets.compare_digest(
+                x_event_grid_secret or "",
+                configured_event_grid_secret,
+            )
+        ):
+            raise HTTPException(status_code=403, detail="Event Grid delivery is not authorized.")
+
+        accepted: list[str] = []
+        for item in events:
+            if item.get("eventType") != "Microsoft.Storage.BlobCreated":
+                continue
+            try:
+                event = configured_publisher.read_event(event_grid_blob_url(item))
+                apply_evidence_event(event)
+            except (OSError, ValueError) as error:
+                raise HTTPException(status_code=422, detail=str(error)) from error
+            accepted.append(event.event_id)
+        return {"accepted_event_ids": accepted}
+
     @application.get(
         "/api/cases/current/sources/{evidence_id}",
         response_model=EvidenceEnvelope,
@@ -596,7 +798,15 @@ def create_app(
 
     @application.post("/api/reset", status_code=status.HTTP_204_NO_CONTENT)
     def reset(response: Response) -> None:
-        store.save(DemoState())
+        try:
+            store.save(DemoState())
+            if configured_publisher is not None:
+                configured_publisher.reset()
+        except OSError as error:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=str(error),
+            ) from error
         research_sessions.clear()
         response.delete_cookie("research_demo_session", samesite="strict")
 

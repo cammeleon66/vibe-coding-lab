@@ -2,12 +2,23 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from threading import RLock
+from typing import Protocol
 
 from collab.models import DemoState
+
+
+class StateStore(Protocol):
+    def load(self) -> DemoState: ...
+
+    def save(self, state: DemoState) -> None: ...
+
+    def check_writable(self) -> None: ...
+
+    def locked(self) -> AbstractContextManager[None]: ...
 
 
 class JsonStateStore:

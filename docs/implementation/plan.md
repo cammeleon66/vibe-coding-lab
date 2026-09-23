@@ -401,7 +401,9 @@ The local product is visually compelling, deterministic, accessible, reviewable,
 
 ## INC-007: Azure and Fabric deployment
 
-### Gate
+**Status:** Blocked on revised networking and cost approval
+
+### Original gate
 
 Do not begin until the user approves:
 
@@ -416,6 +418,35 @@ Do not begin until the user approves:
 ### Outcome
 
 Replace local adapters with Azure adapters through existing seams, verify the deployed rehearsal, and record cost and operational evidence.
+
+### Prepared implementation evidence
+
+- Azure Blob institution-source adapters preserve original source content and
+  replace local retrieval references with Blob references.
+- Azure Blob collaboration-state persistence implements the existing state-store
+  seam.
+- A Blob trigger publisher and authenticated Event Grid webhook preserve the
+  idempotent late-evidence flow.
+- The Azure runtime keeps deterministic synthesis, excludes Azure OpenAI, and
+  leaves the Fabric research adapter disabled.
+- Bicep defines tagged resource groups, managed identity, least-privilege Blob
+  roles, Container Apps, ACR, Event Grid, bounded Log Analytics/Application
+  Insights, a budget alert, and teardown scripts.
+- Forty-three backend tests pass with 92% statement coverage; Azure adapter,
+  persistent state, trigger reset, Event Grid validation, secret rejection, and
+  accepted delivery behavior are covered.
+
+### Deployment finding
+
+The approved subscription forces Blob `publicNetworkAccess=Disabled`, overriding
+the original template. The app cannot use the three storage accounts without
+private networking. The failed base deployment was cleaned up before an
+application became live. See
+[`../decisions/azure-deployment-networking.md`](../decisions/azure-deployment-networking.md).
+
+Another deployment requires an explicit choice between three private endpoints,
+one consolidated storage account/private endpoint, a different approved
+subscription, or stopping at the local rehearsal.
 
 ## Technical quality gates
 
