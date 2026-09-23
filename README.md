@@ -57,8 +57,8 @@ The approved product, architecture, reviews, and implementation plan live under
 - Explicit restore-loading, bounded empty, error, evidence-update, and completed
   presenter states.
 - Playwright acceptance at 1440×960 and Pixel 7 widths, axe accessibility
-  automation, basic keyboard/dialog semantics, and a deterministic 90-second
-  presenter beat plan.
+  automation, keyboard-contained modal semantics with focus restoration, and a
+  deterministic 90-second presenter beat plan.
 - Durable visual evidence, a visual-storytelling presenter guide, structured
   quality review, requirements traceability, and a clinical-fidelity package
   ready for external oncology review.
@@ -137,7 +137,7 @@ npm run test:browser
 ```
 
 Current verified result (2026-09-23): backend formatting, Ruff lint, strict
-mypy, and 38 pytest tests pass with 96% statement coverage; frontend lint,
+mypy, and 40 pytest tests pass with 96% statement coverage; frontend lint,
 13 Vitest behavior tests, the production build, and five Playwright checks pass
 across desktop and mobile Chromium (one desktop-only visual-capture case is
 skipped on mobile). Axe reports no critical or serious WCAG A/AA violations in
