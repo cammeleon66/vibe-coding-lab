@@ -3,9 +3,12 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from collab.models import (
+    CaseDelta,
     ClaimKind,
     ConflictFinding,
+    EvidenceChange,
     EvidenceEnvelope,
+    FindingChange,
     FindingSeverity,
     MissingFinding,
     PreparedCase,
@@ -68,7 +71,35 @@ class CasePreparationService:
         ]
         if not evidence:
             raise PreparationError("No institutional evidence is available for this case.")
+        return self._build(referral, evidence, version=1)
 
+    def refresh(
+        self,
+        referral: Referral,
+        previous: PreparedCase,
+        arrived_evidence: list[EvidenceEnvelope],
+    ) -> PreparedCase:
+        if previous.referral_id != referral.id:
+            raise PreparationError("The prepared case does not belong to the current referral.")
+        if not arrived_evidence:
+            raise PreparationError("The evidence-arrival event contained no supported evidence.")
+        existing_ids = {item.source_identifier for item in previous.evidence}
+        additions = [
+            item for item in arrived_evidence if item.source_identifier not in existing_ids
+        ]
+        if not additions:
+            raise PreparationError("The evidence-arrival event contained no new evidence.")
+        evidence = [*previous.evidence, *additions]
+        prepared = self._build(referral, evidence, version=previous.version + 1)
+        prepared.delta = self._delta(previous, prepared, additions)
+        return prepared
+
+    def _build(
+        self,
+        referral: Referral,
+        evidence: list[EvidenceEnvelope],
+        version: int,
+    ) -> PreparedCase:
         claims = self._claims(evidence)
         conflicts = self._conflicts(claims)
         missing = self._missing(evidence)
@@ -80,7 +111,7 @@ class CasePreparationService:
         return PreparedCase(
             case_id=referral.need.case_id,
             referral_id=referral.id,
-            version=1,
+            version=version,
             prepared_at=utc_now(),
             clinical_question=referral.need.decision_focus,
             evidence=evidence,
@@ -94,6 +125,93 @@ class CasePreparationService:
                 "Synthetic evidence preparation only; not clinically validated.",
                 "Deterministic synthesis uses only values in this prepared evidence package.",
                 "No treatment recommendation or resectability decision is produced.",
+            ],
+        )
+
+    def _delta(
+        self,
+        previous: PreparedCase,
+        current: PreparedCase,
+        additions: list[EvidenceEnvelope],
+    ) -> CaseDelta:
+        previous_imaging = {
+            claim.id: claim.normalized_value or claim.raw_value
+            for claim in previous.claims
+            if claim.category == "imaging"
+        }
+        current_by_key = {
+            claim.id: claim.normalized_value or claim.raw_value
+            for claim in current.claims
+            if claim.category == "imaging"
+        }
+        baseline = next(
+            (
+                value
+                for claim_id, value in current_by_key.items()
+                if claim_id.startswith("original-lesion-sites-")
+            ),
+            "Original lesion sites are not available.",
+        )
+        restaging = next(
+            (
+                value
+                for claim_id, value in current_by_key.items()
+                if claim_id.startswith("restaging-lesion-findings-")
+            ),
+            "Restaging lesion findings are not available.",
+        )
+        changed_findings = [
+            FindingChange(
+                subject="Longitudinal liver lesion mapping",
+                before=(
+                    "No linked baseline lesion map or restaging MRI findings were available."
+                    if not previous_imaging
+                    else "; ".join(previous_imaging.values())
+                ),
+                after=f"Original sites: {baseline}. Restaging: {restaging}.",
+                conclusion_requires_reassessment=True,
+            ),
+            FindingChange(
+                subject="Imaging evidence completeness",
+                before="Original baseline imaging and high-quality restaging MRI were missing.",
+                after=(
+                    "Baseline CT and restaging MRI metadata are now source-linked; "
+                    "human image review remains required."
+                ),
+                conclusion_requires_reassessment=True,
+            ),
+        ]
+        remaining_uncertainty = [item.description for item in current.missing] + [
+            "DICOM pixels were not interpreted in this demonstration.",
+            "Resectability remains a human multidisciplinary conclusion.",
+        ]
+        return CaseDelta(
+            from_version=previous.version,
+            to_version=current.version,
+            added_evidence=[
+                EvidenceChange(
+                    evidence_id=item.source_identifier,
+                    label=next(
+                        (
+                            fact.label
+                            for fact in item.facts
+                            if fact.key in {"baseline_imaging", "restaging_imaging"}
+                        ),
+                        item.source_format,
+                    ),
+                    source_format=item.source_format,
+                    source_institution=item.source_institution,
+                    observed_at=item.observed_at,
+                )
+                for item in additions
+            ],
+            changed_findings=changed_findings,
+            remaining_uncertainty=remaining_uncertainty,
+            affected_human_questions=[
+                "Are all original lesion sites accounted for in the current review?",
+                "How does the segment VIII relationship to the right hepatic vein affect planning?",
+                "Do disappearing lesions require additional imaging correlation?",
+                "Can resectability now be reconsidered by the multidisciplinary team?",
             ],
         )
 

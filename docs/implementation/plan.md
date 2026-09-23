@@ -120,6 +120,8 @@ The referral becomes a source-linked prepared case assembled from two genuinely 
 
 ## INC-003: Imaging update and change detection
 
+**Status:** Complete
+
 ### Outcome
 
 Baseline imaging and restaging MRI arrive after referral and automatically create a new prepared-case version with a clear delta.
@@ -140,6 +142,47 @@ Baseline imaging and restaging MRI arrive after referral and automatically creat
 - Earlier evidence remains inspectable.
 - Duplicate delivery is idempotent.
 - Failure leaves the previous valid case visible and reports the update error.
+
+### Validation evidence
+
+- A typed `EvidenceArrivalEvent` and `EvidenceArrivalSource` form the local
+  delivery boundary intended for a later Event Grid adapter; the implemented
+  local endpoint does not provision or call Azure.
+- One synthetic delivery adds source-linked baseline CT and restaging liver MRI
+  metadata, including original lesion sites, changed lesion visibility and
+  size, and a new vessel relationship.
+- Successful delivery creates prepared case v2 from v1 exactly once. The
+  persisted event fingerprint makes repeated delivery of the same event ID
+  idempotent and rejects reuse of that ID for different content.
+- Prepared-case versions are retained as immutable snapshots. Version and
+  version-specific source endpoints keep earlier evidence inspectable.
+- The deterministic case delta explicitly lists added evidence, before/after
+  findings, human conclusions requiring reassessment, remaining uncertainty,
+  and affected human questions. It makes no treatment or resectability
+  decision and invokes no AI runtime.
+- The UI presents before/after versions, “what changed” categories,
+  source links for new and prior evidence, and the retained-version cue.
+- Refresh errors retain the current valid version, persist an update-error
+  record when possible, and are shown without replacing the workspace.
+- Backend formatting and Ruff lint pass; strict mypy passes.
+- Twenty-one backend tests pass with 96% statement coverage.
+- Frontend lint, seven Vitest behavior tests, and the production build pass.
+- Local evidence-event transitions are serialized across the complete
+  idempotency check and persistence operation; concurrent duplicate deliveries
+  produce one new version and one duplicate response.
+- Real source parsing failures are translated into visible update errors while
+  preserving the prior valid case.
+
+### Known limitations carried forward
+
+- Imaging uses synthetic DICOM metadata JSON only. No pixels, rendered
+  derivative, DICOMweb integration, or clinical image interpretation is
+  included.
+- The Event Grid-shaped seam is exercised locally; Azure delivery,
+  authentication, retries, dead-letter handling, and monitoring remain
+  INC-007 after separate approval.
+- Browser screenshots, responsive visual evidence, accessibility automation,
+  and clinical-fidelity review remain INC-006.
 
 ## INC-004: Human responsibility and MDO handoff
 
@@ -239,6 +282,6 @@ The exact commands will be established with the application scaffold. At minimum
 
 ## Next action
 
-INC-002 is complete locally. The next planned increment is `INC-003`, but it has
-not been started by this change. No Azure or Fabric resources were provisioned
-or modified.
+INC-003 is complete locally. The next planned increment is `INC-004`; it has not
+been started by this change. No Azure or Fabric resources were provisioned or
+modified, and no live AI was added.

@@ -7,11 +7,14 @@ import {
   ExternalLink,
   FileCheck2,
   FileSearch,
+  GitCompare,
   Globe2,
+  History,
   Languages,
   Link2,
   MapPin,
   Network,
+  Radio,
   RotateCcw,
   ShieldCheck,
   Stethoscope,
@@ -189,6 +192,38 @@ interface PreparedCase {
   unmapped_values: string[]
   synthesis: { text: string; support_ids: string[] }[]
   limitations: string[]
+  delta: {
+    from_version: number
+    to_version: number
+    added_evidence: {
+      evidence_id: string
+      label: string
+      source_format: string
+      source_institution: string
+      observed_at: string
+    }[]
+    changed_findings: {
+      subject: string
+      before: string
+      after: string
+      conclusion_requires_reassessment: boolean
+    }[]
+    remaining_uncertainty: string[]
+    affected_human_questions: string[]
+  } | null
+}
+
+interface EvidenceArrivalResult {
+  event_id: string
+  duplicate: boolean
+  prepared_case: PreparedCase
+}
+
+interface CaseUpdateError {
+  event_id: string
+  message: string
+  occurred_at: string
+  preserved_version: number
 }
 
 const initialNeed: ClinicalNeed = {
@@ -230,7 +265,9 @@ function App() {
   const [selectedClinicianId, setSelectedClinicianId] = useState<string | null>(null)
   const [referral, setReferral] = useState<Referral | null>(null)
   const [preparedCase, setPreparedCase] = useState<PreparedCase | null>(null)
+  const [previousCase, setPreviousCase] = useState<PreparedCase | null>(null)
   const [inspectedSource, setInspectedSource] = useState<EvidenceEnvelope | null>(null)
+  const [caseUpdateError, setCaseUpdateError] = useState<CaseUpdateError | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -242,6 +279,18 @@ function App() {
       .then(([restoredReferral, restoredCase]) => {
         setReferral(restoredReferral)
         setPreparedCase(restoredCase)
+        if (restoredCase) {
+          void requestJson<CaseUpdateError | null>('/api/cases/current/update-error')
+            .then(setCaseUpdateError)
+            .catch(() => undefined)
+          if (restoredCase.version > 1) {
+            void requestJson<PreparedCase>(
+              `/api/cases/current/versions/${restoredCase.version - 1}`,
+            )
+              .then(setPreviousCase)
+              .catch(() => undefined)
+          }
+        }
       })
       .catch((reason: unknown) => {
         setError(reason instanceof Error ? reason.message : 'Could not restore the demo state.')
@@ -293,6 +342,8 @@ function App() {
       })
       setReferral(created)
       setPreparedCase(null)
+      setPreviousCase(null)
+      setCaseUpdateError(null)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Referral creation failed.')
     } finally {
@@ -308,6 +359,8 @@ function App() {
         method: 'POST',
       })
       setPreparedCase(prepared)
+      setPreviousCase(null)
+      setCaseUpdateError(null)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Case preparation failed.')
     } finally {
@@ -315,16 +368,51 @@ function App() {
     }
   }
 
-  async function inspectSource(evidenceId: string) {
+  async function inspectSource(evidenceId: string, version?: number) {
     setBusy(true)
     setError(null)
     try {
       const evidence = await requestJson<EvidenceEnvelope>(
-        `/api/cases/current/sources/${encodeURIComponent(evidenceId)}`,
+        `/api/cases/current/sources/${encodeURIComponent(evidenceId)}${
+          version === undefined ? '' : `?version=${version}`
+        }`,
       )
       setInspectedSource(evidence)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Source inspection failed.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function deliverImagingEvidence() {
+    if (!preparedCase) return
+    setBusy(true)
+    setError(null)
+    try {
+      const result = await requestJson<EvidenceArrivalResult>('/api/evidence-arrivals', {
+        method: 'POST',
+        body: JSON.stringify({
+          event_id: 'local-event-grid-imaging-001',
+          event_type: 'Microsoft.Storage.BlobCreated',
+          subject: '/synthetic/milan/CRC-EU-001/imaging',
+          case_id: preparedCase.case_id,
+          evidence_set: 'baseline-and-restaging-imaging',
+          occurred_at: new Date().toISOString(),
+        }),
+      })
+      setPreviousCase(preparedCase)
+      setPreparedCase(result.prepared_case)
+      setCaseUpdateError(null)
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : 'Evidence update failed.'
+      setError(message)
+      setCaseUpdateError({
+        event_id: 'local-event-grid-imaging-001',
+        message,
+        occurred_at: new Date().toISOString(),
+        preserved_version: preparedCase.version,
+      })
     } finally {
       setBusy(false)
     }
@@ -337,7 +425,9 @@ function App() {
       await requestJson<void>('/api/reset', { method: 'POST' })
       setReferral(null)
       setPreparedCase(null)
+      setPreviousCase(null)
       setInspectedSource(null)
+      setCaseUpdateError(null)
       setMatches(null)
       setSelectedId(null)
       setSelectedClinicianId(null)
@@ -402,10 +492,13 @@ function App() {
       {preparedCase && referral ? (
         <PreparedWorkspace
           preparedCase={preparedCase}
+          previousCase={previousCase}
           referral={referral}
           busy={busy}
+          caseUpdateError={caseUpdateError}
           inspectedSource={inspectedSource}
           onInspectSource={inspectSource}
+          onDeliverImaging={deliverImagingEvidence}
           onCloseSource={() => setInspectedSource(null)}
           onReset={resetDemo}
         />
@@ -765,18 +858,24 @@ function ReferralOpened({
 
 function PreparedWorkspace({
   preparedCase,
+  previousCase,
   referral,
   busy,
+  caseUpdateError,
   inspectedSource,
   onInspectSource,
+  onDeliverImaging,
   onCloseSource,
   onReset,
 }: {
   preparedCase: PreparedCase
+  previousCase: PreparedCase | null
   referral: Referral
   busy: boolean
+  caseUpdateError: CaseUpdateError | null
   inspectedSource: EvidenceEnvelope | null
-  onInspectSource: (evidenceId: string) => void
+  onInspectSource: (evidenceId: string, version?: number) => void
+  onDeliverImaging: () => void
   onCloseSource: () => void
   onReset: () => void
 }) {
@@ -793,8 +892,33 @@ function PreparedWorkspace({
           <ArrowRight size={17} />
           <span>{referral.centre.country}</span>
           <small>{preparedCase.evidence.length} source envelopes</small>
+          {preparedCase.version === 1 && (
+            <button className="arrival-action" onClick={onDeliverImaging} disabled={busy}>
+              <Radio size={16} />
+              {busy ? 'Receiving imaging…' : 'Receive late imaging evidence'}
+            </button>
+          )}
         </div>
       </header>
+
+      {caseUpdateError && (
+        <section className="update-error" role="status">
+          <CircleAlert size={20} />
+          <div>
+            <strong>Evidence update failed — case v{caseUpdateError.preserved_version} preserved</strong>
+            <p>{caseUpdateError.message}</p>
+            <small>Delivery {caseUpdateError.event_id}</small>
+          </div>
+        </section>
+      )}
+
+      {preparedCase.delta && previousCase && (
+        <CaseChangeView
+          preparedCase={preparedCase}
+          previousCase={previousCase}
+          onInspectSource={onInspectSource}
+        />
+      )}
 
       <div className="workspace-alerts">
         {preparedCase.conflicts.map((conflict) => (
@@ -906,6 +1030,116 @@ function PreparedWorkspace({
       {inspectedSource && (
         <SourceInspector evidence={inspectedSource} onClose={onCloseSource} />
       )}
+    </section>
+  )
+}
+
+function CaseChangeView({
+  preparedCase,
+  previousCase,
+  onInspectSource,
+}: {
+  preparedCase: PreparedCase
+  previousCase: PreparedCase
+  onInspectSource: (evidenceId: string, version?: number) => void
+}) {
+  const delta = preparedCase.delta
+  if (!delta) return null
+
+  return (
+    <section className="case-change" aria-label="Case version comparison">
+      <div className="change-heading">
+        <div>
+          <p className="eyebrow">Automatic evidence refresh · no new AI prompt</p>
+          <h2>What changed from case v{delta.from_version} to v{delta.to_version}</h2>
+        </div>
+        <span className="version-transition">
+          <History size={16} />
+          Immutable v{previousCase.version} retained
+        </span>
+      </div>
+
+      <div className="before-after">
+        <article>
+          <span>Before · case v{previousCase.version}</span>
+          <strong>Imaging evidence incomplete</strong>
+          <p>
+            {previousCase.evidence.length} source envelopes were prepared before the late
+            imaging delivery.
+          </p>
+          <div className="version-sources">
+            {previousCase.evidence.slice(0, 3).map((item) => (
+              <button
+                key={item.source_identifier}
+                onClick={() => onInspectSource(item.source_identifier, previousCase.version)}
+              >
+                <Link2 size={13} />
+                {item.source_format}
+              </button>
+            ))}
+          </div>
+        </article>
+        <GitCompare size={22} aria-hidden="true" />
+        <article className="after">
+          <span>After · case v{preparedCase.version}</span>
+          <strong>Baseline and restaging imaging linked</strong>
+          <p>
+            {preparedCase.evidence.length} source envelopes now support longitudinal review.
+          </p>
+          <div className="version-sources">
+            {delta.added_evidence.map((item) => (
+              <button
+                key={item.evidence_id}
+                onClick={() => onInspectSource(item.evidence_id, preparedCase.version)}
+              >
+                <Link2 size={13} />
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </article>
+      </div>
+
+      <div className="delta-grid">
+        <article>
+          <h3>Added evidence</h3>
+          {delta.added_evidence.map((item) => (
+            <button
+              className="delta-source"
+              key={item.evidence_id}
+              onClick={() => onInspectSource(item.evidence_id, preparedCase.version)}
+            >
+              <strong>{item.label}</strong>
+              <small>{item.source_institution} · {item.source_format}</small>
+            </button>
+          ))}
+        </article>
+        <article>
+          <h3>Changed findings & conclusions</h3>
+          {delta.changed_findings.map((item) => (
+            <div className="delta-item" key={item.subject}>
+              <strong>{item.subject}</strong>
+              <p><b>Before:</b> {item.before}</p>
+              <p><b>After:</b> {item.after}</p>
+              {item.conclusion_requires_reassessment && (
+                <small>Human conclusion requires reassessment</small>
+              )}
+            </div>
+          ))}
+        </article>
+        <article>
+          <h3>Remaining uncertainty</h3>
+          <ul>
+            {delta.remaining_uncertainty.map((item) => <li key={item}>{item}</li>)}
+          </ul>
+        </article>
+        <article>
+          <h3>Affected human questions</h3>
+          <ol>
+            {delta.affected_human_questions.map((item) => <li key={item}>{item}</li>)}
+          </ol>
+        </article>
+      </div>
     </section>
   )
 }

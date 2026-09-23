@@ -7,6 +7,7 @@ from collab.app import create_app
 from collab.directory import SyntheticExpertDirectory
 from collab.models import (
     ClinicalNeed,
+    EvidenceArrivalEvent,
     EvidenceEnvelope,
     ReferralCreate,
     ReferralSender,
@@ -14,7 +15,7 @@ from collab.models import (
 )
 from collab.preparation import CasePreparationService
 from collab.referrals import ReferralService
-from collab.sources import MilanLocalSource, UtrechtLocalSource
+from collab.sources import MilanLateImagingSource, MilanLocalSource, UtrechtLocalSource
 
 
 def _referral():
@@ -54,7 +55,6 @@ def test_milan_adapter_preserves_formats_warnings_and_unmapped_values() -> None:
         "CDA/XML",
         "PDF-derived text",
         "local JSON",
-        "DICOM metadata JSON",
     }
     assert all(item.content_hash for item in evidence)
     cda = next(item for item in evidence if item.source_format == "CDA/XML")
@@ -66,6 +66,26 @@ def test_milan_adapter_preserves_formats_warnings_and_unmapped_values() -> None:
     assert cda.original_media_type == "application/xml"
     treatment = next(item for item in evidence if item.source_format == "local JSON")
     assert treatment.unmapped_values == ["response_code=PRX"]
+
+
+def test_late_imaging_source_preserves_original_sites_and_new_anatomy() -> None:
+    evidence = MilanLateImagingSource().read_arrival(
+        EvidenceArrivalEvent(
+            event_id="evt-imaging",
+            occurred_at="2026-09-23T10:25:00Z",
+        )
+    )
+
+    assert len(evidence) == 2
+    assert {item.source_identifier for item in evidence} == {
+        "1.2.826.0.1.3680043.10.1000.1",
+        "1.2.826.0.1.3680043.10.1000.2",
+    }
+    facts = {fact.key: fact for item in evidence for fact in item.facts}
+    assert "segment IVa" in facts["original_lesion_sites"].raw_value
+    assert "No longer visible" in facts["restaging_lesion_findings"].raw_value
+    assert "right hepatic vein" in facts["new_anatomical_evidence"].raw_value
+    assert all(item.original_content for item in evidence)
 
 
 def test_utrecht_adapter_is_structurally_different_and_preserves_requirement() -> None:

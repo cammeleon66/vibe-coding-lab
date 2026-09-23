@@ -7,11 +7,20 @@ from pathlib import Path
 from typing import Protocol
 from xml.etree import ElementTree
 
-from collab.models import EvidenceEnvelope, EvidenceFact, TransformationStatus
+from collab.models import (
+    EvidenceArrivalEvent,
+    EvidenceEnvelope,
+    EvidenceFact,
+    TransformationStatus,
+)
 
 
 class InstitutionSource(Protocol):
     def read_snapshot(self, case_id: str) -> list[EvidenceEnvelope]: ...
+
+
+class EvidenceArrivalSource(Protocol):
+    def read_arrival(self, event: EvidenceArrivalEvent) -> list[EvidenceEnvelope]: ...
 
 
 def _timestamp(value: str) -> datetime:
@@ -35,7 +44,6 @@ class MilanLocalSource:
             self._read_cda(),
             self._read_pathology(),
             self._read_treatment(),
-            self._read_dicom_metadata(),
         ]
 
     def _read_cda(self) -> EvidenceEnvelope:
@@ -168,10 +176,14 @@ class MilanLocalSource:
             original_content=content.decode("utf-8"),
         )
 
-    def _read_dicom_metadata(self) -> EvidenceEnvelope:
+    def read_baseline_imaging(self) -> EvidenceEnvelope:
         path = self._root / "baseline-ct.dicom-metadata.json"
         content = path.read_bytes()
         payload = json.loads(content)
+        lesion_sites = "; ".join(
+            f"segment {item['segment']} {item['size_mm']} mm ({item['relationship']})"
+            for item in payload["LesionSites"]
+        )
         return EvidenceEnvelope(
             source_institution=self.institution,
             source_identifier=payload["StudyInstanceUID"],
@@ -192,10 +204,92 @@ class MilanLocalSource:
                     normalized_value="Baseline contrast-enhanced CT of the liver (2025-02-18)",
                     transformation="Combined selected DICOM metadata; no pixels were interpreted.",
                     source_pointer="Modality, BodyPartExamined, StudyDate",
-                )
+                ),
+                EvidenceFact(
+                    key="original_lesion_sites",
+                    label="Original liver lesion sites",
+                    category="imaging",
+                    raw_value=lesion_sites,
+                    normalized_value=lesion_sites,
+                    transformation=(
+                        "Combined lesion-site metadata without interpreting DICOM pixels."
+                    ),
+                    source_pointer="LesionSites",
+                ),
             ],
             warnings=["Only DICOM metadata is present; no image interpretation was performed."],
             retrieval_reference="fixtures/milan/baseline-ct.dicom-metadata.json",
+            original_media_type="application/dicom+json",
+            original_content=content.decode("utf-8"),
+        )
+
+
+class MilanLateImagingSource:
+    institution = MilanLocalSource.institution
+
+    def __init__(self, fixture_root: Path | None = None) -> None:
+        self._root = fixture_root or Path(__file__).parent / "fixtures" / "milan"
+        self._milan = MilanLocalSource(self._root)
+
+    def read_arrival(self, event: EvidenceArrivalEvent) -> list[EvidenceEnvelope]:
+        if event.case_id != "CRC-EU-001" or event.evidence_set != "baseline-and-restaging-imaging":
+            return []
+        return [self._milan.read_baseline_imaging(), self._read_restaging_mri()]
+
+    def _read_restaging_mri(self) -> EvidenceEnvelope:
+        path = self._root / "restaging-mri.dicom-metadata.json"
+        content = path.read_bytes()
+        payload = json.loads(content)
+        findings = "; ".join(
+            f"segment {item['segment']}: {item['status']}" for item in payload["Findings"]
+        )
+        return EvidenceEnvelope(
+            source_institution=self.institution,
+            source_identifier=payload["StudyInstanceUID"],
+            source_format="DICOM metadata JSON",
+            observed_at=_timestamp(payload["ObservedAt"]),
+            received_at=_timestamp(payload["ReceivedAt"]),
+            content_hash=_hash(content),
+            transformation_status=TransformationStatus.ORIGINAL,
+            facts=[
+                EvidenceFact(
+                    key="restaging_imaging",
+                    label="Restaging imaging",
+                    category="imaging",
+                    raw_value=(
+                        f"{payload['Modality']} {payload['BodyPartExamined']} "
+                        f"{payload['StudyDate']}"
+                    ),
+                    normalized_value="Restaging contrast-enhanced liver MRI (2025-06-30)",
+                    transformation="Combined selected DICOM metadata; no pixels were interpreted.",
+                    source_pointer="Modality, BodyPartExamined, StudyDate",
+                ),
+                EvidenceFact(
+                    key="restaging_lesion_findings",
+                    label="Restaging lesion findings",
+                    category="imaging",
+                    raw_value=findings,
+                    normalized_value=findings,
+                    transformation=(
+                        "Combined supplied lesion findings without independent image "
+                        "interpretation."
+                    ),
+                    source_pointer="Findings",
+                ),
+                EvidenceFact(
+                    key="new_anatomical_evidence",
+                    label="New anatomical evidence",
+                    category="imaging",
+                    raw_value=payload["NewAnatomicalEvidence"],
+                    normalized_value=payload["NewAnatomicalEvidence"],
+                    transformation="Retained the supplied anatomical relationship.",
+                    source_pointer="NewAnatomicalEvidence",
+                ),
+            ],
+            warnings=[
+                "Only synthetic DICOM metadata is present; no pixels were viewed or interpreted."
+            ],
+            retrieval_reference="fixtures/milan/restaging-mri.dicom-metadata.json",
             original_media_type="application/dicom+json",
             original_content=content.decode("utf-8"),
         )

@@ -1,0 +1,15 @@
+{
+  "StudyInstanceUID": "1.2.826.0.1.3680043.10.1000.2",
+  "ObservedAt": "2025-06-30T13:20:00Z",
+  "ReceivedAt": "2026-09-23T10:25:00Z",
+  "Modality": "MR",
+  "BodyPartExamined": "LIVER",
+  "StudyDate": "20250630",
+  "SeriesDescription": "Restaging contrast-enhanced liver MRI",
+  "Findings": [
+    {"segment": "IVa", "status": "No longer visible on supplied metadata summary"},
+    {"segment": "VII", "status": "Residual lesion 19 mm, reduced from 42 mm"},
+    {"segment": "VIII", "status": "Residual lesion 16 mm abutting right hepatic vein"}
+  ],
+  "NewAnatomicalEvidence": "Segment VIII lesion relationship to the right hepatic vein is now explicit."
+}

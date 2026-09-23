@@ -4,5 +4,11 @@
   "ReceivedAt": "2026-09-23T10:03:00Z",
   "Modality": "CT",
   "BodyPartExamined": "LIVER",
-  "StudyDate": "20250218"
+  "StudyDate": "20250218",
+  "SeriesDescription": "Baseline portal venous phase liver CT",
+  "LesionSites": [
+    {"segment": "IVa", "size_mm": 24, "relationship": "No major vessel contact recorded"},
+    {"segment": "VII", "size_mm": 42, "relationship": "Adjacent to right hepatic vein"},
+    {"segment": "VIII", "size_mm": 31, "relationship": "Near middle hepatic vein"}
+  ]
 }

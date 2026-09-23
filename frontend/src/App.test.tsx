@@ -216,6 +216,8 @@ const evidence = {
   warnings: ['Italian date format was normalized.'],
   unmapped_values: [],
   retrieval_reference: 'fixtures/milan/referral.cda.xml',
+  original_media_type: 'application/xml',
+  original_content: '<ClinicalDocument />',
 }
 
 const preparedCase = {
@@ -283,6 +285,88 @@ const preparedCase = {
     },
   ],
   limitations: ['No treatment recommendation is produced.'],
+  delta: null,
+}
+
+const updatedCase = {
+  ...preparedCase,
+  version: 2,
+  evidence: [
+    ...preparedCase.evidence,
+    {
+      ...evidence,
+      source_identifier: '1.2.826.baseline',
+      source_format: 'DICOM metadata JSON',
+      retrieval_reference: 'fixtures/milan/baseline-ct.dicom-metadata.json',
+      original_media_type: 'application/dicom+json',
+      original_content: '{"Modality":"CT"}',
+      facts: [
+        {
+          ...evidence.facts[0],
+          key: 'original_lesion_sites',
+          label: 'Original liver lesion sites',
+          category: 'imaging',
+          raw_value: 'segments IVa, VII and VIII',
+          normalized_value: 'segments IVa, VII and VIII',
+          source_pointer: 'LesionSites',
+        },
+      ],
+    },
+    {
+      ...evidence,
+      source_identifier: '1.2.826.restaging',
+      source_format: 'DICOM metadata JSON',
+      retrieval_reference: 'fixtures/milan/restaging-mri.dicom-metadata.json',
+      original_media_type: 'application/dicom+json',
+      original_content: '{"Modality":"MR"}',
+      facts: [
+        {
+          ...evidence.facts[0],
+          key: 'new_anatomical_evidence',
+          label: 'New anatomical evidence',
+          category: 'imaging',
+          raw_value: 'Segment VIII abuts the right hepatic vein.',
+          normalized_value: 'Segment VIII abuts the right hepatic vein.',
+          source_pointer: 'NewAnatomicalEvidence',
+        },
+      ],
+    },
+  ],
+  delta: {
+    from_version: 1,
+    to_version: 2,
+    added_evidence: [
+      {
+        evidence_id: '1.2.826.baseline',
+        label: 'Baseline imaging',
+        source_format: 'DICOM metadata JSON',
+        source_institution: 'Istituto Nazionale dei Tumori, Milan',
+        observed_at: '2025-02-18T10:15:00Z',
+      },
+      {
+        evidence_id: '1.2.826.restaging',
+        label: 'Restaging imaging',
+        source_format: 'DICOM metadata JSON',
+        source_institution: 'Istituto Nazionale dei Tumori, Milan',
+        observed_at: '2025-06-30T13:20:00Z',
+      },
+    ],
+    changed_findings: [
+      {
+        subject: 'Longitudinal liver lesion mapping',
+        before: 'No linked baseline lesion map or restaging MRI findings were available.',
+        after: 'Original sites mapped; segment VIII abuts the right hepatic vein.',
+        conclusion_requires_reassessment: true,
+      },
+    ],
+    remaining_uncertainty: [
+      'RAS status is missing.',
+      'Resectability remains a human multidisciplinary conclusion.',
+    ],
+    affected_human_questions: [
+      'How does the segment VIII relationship to the right hepatic vein affect planning?',
+    ],
+  },
 }
 
 describe('prepared clinical workspace', () => {
@@ -342,5 +426,79 @@ describe('prepared clinical workspace', () => {
       'Institution source unavailable.',
     )
     expect(screen.getByText(/collaboration workspace opened/i)).toBeInTheDocument()
+  })
+
+  it('delivers late imaging without an AI prompt and shows before, after, and delta', async () => {
+    const fetchMock = vi.fn((url: string, options?: RequestInit) => {
+      if (url === '/api/referrals/current') return response(referral)
+      if (url === '/api/cases/current') return response(preparedCase)
+      if (url === '/api/cases/current/update-error') return response(null)
+      if (url === '/api/evidence-arrivals') {
+        return response({
+          event_id: 'local-event-grid-imaging-001',
+          duplicate: false,
+          prepared_case: updatedCase,
+        })
+      }
+      if (url === '/api/cases/current/sources/MIL-CDA-001?version=1') {
+        return response(evidence)
+      }
+      throw new Error(`Unexpected request: ${url} ${options?.method}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(
+      await screen.findByRole('button', { name: /receive late imaging evidence/i }),
+    )
+
+    expect(await screen.findByText(/what changed from case v1 to v2/i)).toBeInTheDocument()
+    expect(screen.getByText('Before · case v1')).toBeInTheDocument()
+    expect(screen.getByText('After · case v2')).toBeInTheDocument()
+    expect(screen.getAllByText('Baseline imaging').length).toBeGreaterThan(0)
+    expect(screen.getByText('Changed findings & conclusions')).toBeInTheDocument()
+    expect(screen.getByText('Remaining uncertainty')).toBeInTheDocument()
+    expect(screen.getByText('Affected human questions')).toBeInTheDocument()
+    expect(screen.getByText(/human conclusion requires reassessment/i)).toBeInTheDocument()
+    expect(fetchMock.mock.calls.some(([url]) => String(url).toLowerCase().includes('ai'))).toBe(
+      false,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'CDA/XML' }))
+    expect(await screen.findByLabelText('Source evidence inspector')).toBeInTheDocument()
+    expect(
+      fetchMock.mock.calls.some(
+        ([url]) => url === '/api/cases/current/sources/MIL-CDA-001?version=1',
+      ),
+    ).toBe(true)
+  })
+
+  it('keeps case v1 visible and explicitly reports an evidence update failure', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url === '/api/referrals/current') return response(referral)
+        if (url === '/api/cases/current') return response(preparedCase)
+        if (url === '/api/cases/current/update-error') return response(null)
+        if (url === '/api/evidence-arrivals') {
+          return response({ detail: 'Synthetic imaging parser failed.' }, 422)
+        }
+        throw new Error(`Unexpected request: ${url}`)
+      }),
+    )
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(
+      await screen.findByRole('button', { name: /receive late imaging evidence/i }),
+    )
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Synthetic imaging parser failed.',
+    )
+    expect(screen.getByText(/case v1 preserved/i)).toBeInTheDocument()
+    expect(screen.getByText('Prepared clinical workspace · case v1')).toBeInTheDocument()
+    expect(screen.queryByText(/what changed from case v1 to v2/i)).not.toBeInTheDocument()
   })
 })

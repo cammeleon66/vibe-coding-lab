@@ -217,6 +217,30 @@ class SynthesisStatement(BaseModel):
     support_ids: list[str]
 
 
+class EvidenceChange(BaseModel):
+    evidence_id: str
+    label: str
+    source_format: str
+    source_institution: str
+    observed_at: datetime
+
+
+class FindingChange(BaseModel):
+    subject: str
+    before: str
+    after: str
+    conclusion_requires_reassessment: bool
+
+
+class CaseDelta(BaseModel):
+    from_version: int
+    to_version: int
+    added_evidence: list[EvidenceChange]
+    changed_findings: list[FindingChange]
+    remaining_uncertainty: list[str]
+    affected_human_questions: list[str]
+
+
 class PreparedCase(BaseModel):
     case_id: str
     referral_id: str
@@ -231,11 +255,37 @@ class PreparedCase(BaseModel):
     unmapped_values: list[str]
     synthesis: list[SynthesisStatement]
     limitations: list[str]
+    delta: CaseDelta | None = None
+
+
+class EvidenceArrivalEvent(BaseModel):
+    event_id: str = Field(min_length=1)
+    event_type: str = "Microsoft.Storage.BlobCreated"
+    subject: str = "/synthetic/milan/CRC-EU-001/imaging"
+    case_id: str = "CRC-EU-001"
+    evidence_set: str = "baseline-and-restaging-imaging"
+    occurred_at: datetime
+
+
+class EvidenceArrivalResult(BaseModel):
+    event_id: str
+    duplicate: bool
+    prepared_case: PreparedCase
+
+
+class CaseUpdateError(BaseModel):
+    event_id: str
+    message: str
+    occurred_at: datetime
+    preserved_version: int
 
 
 class DemoState(BaseModel):
     current_referral: Referral | None = None
     current_prepared_case: PreparedCase | None = None
+    prepared_case_versions: list[PreparedCase] = Field(default_factory=list)
+    processed_evidence_events: dict[str, str] = Field(default_factory=dict)
+    case_update_error: CaseUpdateError | None = None
 
 
 def utc_now() -> datetime:
