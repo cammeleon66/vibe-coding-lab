@@ -186,6 +186,8 @@ Baseline imaging and restaging MRI arrive after referral and automatically creat
 
 ## INC-004: Human responsibility and MDO handoff
 
+**Status:** Complete
+
 ### Outcome
 
 The fictional Utrecht clinician records an opinion and next action, then creates a versioned narrative handoff to the existing MDO.
@@ -205,6 +207,50 @@ The fictional Utrecht clinician records an opinion and next action, then creates
 - The handoff cannot be created while required evidence or review conditions are unresolved.
 - The UI states that the MDO uses a separate backend in version one.
 - Manifest tests cover versioning, missing conditions, and continuity fields.
+
+### Validation evidence
+
+- Human opinions are typed and persisted with reviewer, considered opinion,
+  explicit condition decisions, next responsible actor/action, timestamp, case
+  ID, and prepared-case version.
+- Required evidence findings and source conflicts become explicit review
+  conditions. The backend rejects omitted conditions and resolved conditions
+  without a resolution note.
+- Review state is recalculated against the current immutable prepared-case
+  version. Evidence arrival leaves the earlier opinion in history but marks it
+  stale, removes handoff readiness, and requires a new review for the new case
+  version.
+- Handoff creation uses optimistic case-version and opinion-ID checks and is
+  blocked until every required evidence/review condition is resolved.
+- Persisted manifests are independently versioned and preserve case ID, clinical
+  question, prepared evidence version, source-evidence inventory, unresolved
+  evidence and review issues, human responsibility, timestamp, and synthetic/not-for-
+  clinical-use labels.
+- The controlled launch URL contains only case ID, evidence version, and
+  manifest ID. The UI and manifest state that the autonomous MDO uses a separate
+  backend in version one; no MDO API or private state is accessed.
+- Success and failure tests cover missing/blank conditions, explicit
+  responsibility, stale review after evidence arrival, wrong-version rejection,
+  continuity fields, manifest versioning/persistence, gated UI behavior, and the
+  separate-backend launch notice.
+- Backend formatting and Ruff lint pass; strict mypy passes.
+- Twenty-seven backend tests pass with 96% statement coverage.
+- Frontend lint, nine Vitest behavior tests, and the production build pass.
+- Independent review findings were fixed: stale manifests are not restored as
+  launchable for newer case versions, missing source evidence remains in the
+  handoff, and whitespace-only reviewer/opinion values are rejected.
+
+### Known limitations carried forward
+
+- Condition resolution is a human workflow disposition and does not add or
+  modify source evidence. The synthetic molecular gaps remain visible in the
+  immutable prepared case.
+- The default MDO target is `http://localhost:5174`; the separate application's
+  availability and matching-case rehearsal must be checked before presentation.
+- No shared backend, authenticated transfer, receipt acknowledgement, or live
+  MDO integration is included in version one.
+- Browser screenshots, responsive visual evidence, accessibility automation,
+  and clinical-fidelity review remain INC-006.
 
 ## INC-005: Research authorization epilogue
 
@@ -282,6 +328,6 @@ The exact commands will be established with the application scaffold. At minimum
 
 ## Next action
 
-INC-003 is complete locally. The next planned increment is `INC-004`; it has not
+INC-004 is complete locally. The next planned increment is `INC-005`; it has not
 been started by this change. No Azure or Fabric resources were provisioned or
-modified, and no live AI was added.
+modified, no private MDO backend was integrated, and no live AI was added.

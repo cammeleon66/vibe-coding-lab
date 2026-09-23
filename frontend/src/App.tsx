@@ -3,6 +3,7 @@ import {
   Check,
   CircleAlert,
   CircleDot,
+  ClipboardCheck,
   Database,
   ExternalLink,
   FileCheck2,
@@ -226,6 +227,59 @@ interface CaseUpdateError {
   preserved_version: number
 }
 
+type ReviewConditionStatus = 'open' | 'resolved'
+
+interface ReviewCondition {
+  issue_id: string
+  kind: 'required_evidence' | 'review'
+  description: string
+  status: ReviewConditionStatus
+  resolution: string
+}
+
+interface HumanOpinion {
+  id: string
+  case_id: string
+  case_version: number
+  reviewer: string
+  opinion: string
+  conditions: ReviewCondition[]
+  next_responsibility: {
+    actor: string
+    action: string
+  }
+  recorded_at: string
+}
+
+interface HumanReviewState {
+  current_case_version: number
+  opinion: HumanOpinion | null
+  required_conditions: ReviewCondition[]
+  stale: boolean
+  handoff_ready: boolean
+  blockers: string[]
+}
+
+interface HandoffManifest {
+  id: string
+  version: number
+  case_id: string
+  clinical_question: string
+  evidence_version: number
+  source_evidence_inventory: string[]
+  unresolved_issues: string[]
+  opinion_id: string
+  responsibility: {
+    actor: string
+    action: string
+  }
+  created_at: string
+  synthetic_labels: string[]
+  launch_url: string
+  separate_backend: boolean
+  backend_notice: string
+}
+
 const initialNeed: ClinicalNeed = {
   case_id: 'CRC-EU-001',
   diagnosis: 'Metastatic colorectal cancer with liver-limited metastases',
@@ -268,6 +322,8 @@ function App() {
   const [previousCase, setPreviousCase] = useState<PreparedCase | null>(null)
   const [inspectedSource, setInspectedSource] = useState<EvidenceEnvelope | null>(null)
   const [caseUpdateError, setCaseUpdateError] = useState<CaseUpdateError | null>(null)
+  const [reviewState, setReviewState] = useState<HumanReviewState | null>(null)
+  const [handoffManifest, setHandoffManifest] = useState<HandoffManifest | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -290,12 +346,40 @@ function App() {
               .then(setPreviousCase)
               .catch(() => undefined)
           }
+          void Promise.all([
+            requestJson<HumanReviewState>('/api/cases/current/review'),
+            requestJson<HandoffManifest[]>('/api/cases/current/handoffs'),
+          ])
+            .then(([state, items]) => {
+              setReviewState(state)
+              const currentManifest =
+                state.handoff_ready && state.opinion
+                  ? items
+                      .filter(
+                        (item) =>
+                          item.evidence_version === restoredCase.version &&
+                          item.opinion_id === state.opinion?.id,
+                      )
+                      .at(-1) ?? null
+                  : null
+              setHandoffManifest(currentManifest)
+            })
+            .catch(() => undefined)
         }
       })
       .catch((reason: unknown) => {
         setError(reason instanceof Error ? reason.message : 'Could not restore the demo state.')
       })
   }, [])
+
+  async function refreshReviewState() {
+    try {
+      const state = await requestJson<HumanReviewState>('/api/cases/current/review')
+      setReviewState(state)
+    } catch {
+      setReviewState(null)
+    }
+  }
 
   const selected = useMemo(
     () => matches?.matches.find((item) => item.centre.id === selectedId) ?? null,
@@ -344,6 +428,8 @@ function App() {
       setPreparedCase(null)
       setPreviousCase(null)
       setCaseUpdateError(null)
+      setReviewState(null)
+      setHandoffManifest(null)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Referral creation failed.')
     } finally {
@@ -361,6 +447,7 @@ function App() {
       setPreparedCase(prepared)
       setPreviousCase(null)
       setCaseUpdateError(null)
+      await refreshReviewState()
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Case preparation failed.')
     } finally {
@@ -404,6 +491,8 @@ function App() {
       setPreviousCase(preparedCase)
       setPreparedCase(result.prepared_case)
       setCaseUpdateError(null)
+      setHandoffManifest(null)
+      await refreshReviewState()
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : 'Evidence update failed.'
       setError(message)
@@ -413,6 +502,56 @@ function App() {
         occurred_at: new Date().toISOString(),
         preserved_version: preparedCase.version,
       })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function saveHumanReview(command: {
+    case_version: number
+    reviewer: string
+    opinion: string
+    conditions: {
+      issue_id: string
+      status: ReviewConditionStatus
+      resolution: string
+    }[]
+    next_responsibility: {
+      actor: string
+      action: string
+    }
+  }) {
+    setBusy(true)
+    setError(null)
+    try {
+      const state = await requestJson<HumanReviewState>('/api/cases/current/reviews', {
+        method: 'POST',
+        body: JSON.stringify(command),
+      })
+      setReviewState(state)
+      setHandoffManifest(null)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Human review could not be saved.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function createMdoHandoff() {
+    if (!preparedCase || !reviewState?.opinion) return
+    setBusy(true)
+    setError(null)
+    try {
+      const manifest = await requestJson<HandoffManifest>('/api/cases/current/handoffs', {
+        method: 'POST',
+        body: JSON.stringify({
+          case_version: preparedCase.version,
+          opinion_id: reviewState.opinion.id,
+        }),
+      })
+      setHandoffManifest(manifest)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'MDO handoff could not be created.')
     } finally {
       setBusy(false)
     }
@@ -428,6 +567,8 @@ function App() {
       setPreviousCase(null)
       setInspectedSource(null)
       setCaseUpdateError(null)
+      setReviewState(null)
+      setHandoffManifest(null)
       setMatches(null)
       setSelectedId(null)
       setSelectedClinicianId(null)
@@ -496,9 +637,13 @@ function App() {
           referral={referral}
           busy={busy}
           caseUpdateError={caseUpdateError}
+          reviewState={reviewState}
+          handoffManifest={handoffManifest}
           inspectedSource={inspectedSource}
           onInspectSource={inspectSource}
           onDeliverImaging={deliverImagingEvidence}
+          onSaveReview={saveHumanReview}
+          onCreateHandoff={createMdoHandoff}
           onCloseSource={() => setInspectedSource(null)}
           onReset={resetDemo}
         />
@@ -862,9 +1007,13 @@ function PreparedWorkspace({
   referral,
   busy,
   caseUpdateError,
+  reviewState,
+  handoffManifest,
   inspectedSource,
   onInspectSource,
   onDeliverImaging,
+  onSaveReview,
+  onCreateHandoff,
   onCloseSource,
   onReset,
 }: {
@@ -873,9 +1022,26 @@ function PreparedWorkspace({
   referral: Referral
   busy: boolean
   caseUpdateError: CaseUpdateError | null
+  reviewState: HumanReviewState | null
+  handoffManifest: HandoffManifest | null
   inspectedSource: EvidenceEnvelope | null
   onInspectSource: (evidenceId: string, version?: number) => void
   onDeliverImaging: () => void
+  onSaveReview: (command: {
+    case_version: number
+    reviewer: string
+    opinion: string
+    conditions: {
+      issue_id: string
+      status: ReviewConditionStatus
+      resolution: string
+    }[]
+    next_responsibility: {
+      actor: string
+      action: string
+    }
+  }) => void
+  onCreateHandoff: () => void
   onCloseSource: () => void
   onReset: () => void
 }) {
@@ -947,6 +1113,18 @@ function PreparedWorkspace({
           </article>
         ))}
       </div>
+
+      {reviewState && (
+        <HumanReviewPanel
+          key={`${preparedCase.version}-${reviewState.opinion?.id ?? 'new'}-${reviewState.stale}`}
+          preparedCase={preparedCase}
+          reviewState={reviewState}
+          handoffManifest={handoffManifest}
+          busy={busy}
+          onSaveReview={onSaveReview}
+          onCreateHandoff={onCreateHandoff}
+        />
+      )}
 
       <div className="workspace-grid">
         <section className="claim-board" aria-label="Prepared evidence claims">
@@ -1029,6 +1207,253 @@ function PreparedWorkspace({
 
       {inspectedSource && (
         <SourceInspector evidence={inspectedSource} onClose={onCloseSource} />
+      )}
+    </section>
+  )
+}
+
+function HumanReviewPanel({
+  preparedCase,
+  reviewState,
+  handoffManifest,
+  busy,
+  onSaveReview,
+  onCreateHandoff,
+}: {
+  preparedCase: PreparedCase
+  reviewState: HumanReviewState
+  handoffManifest: HandoffManifest | null
+  busy: boolean
+  onSaveReview: (command: {
+    case_version: number
+    reviewer: string
+    opinion: string
+    conditions: {
+      issue_id: string
+      status: ReviewConditionStatus
+      resolution: string
+    }[]
+    next_responsibility: {
+      actor: string
+      action: string
+    }
+  }) => void
+  onCreateHandoff: () => void
+}) {
+  const currentOpinion =
+    reviewState.opinion?.case_version === preparedCase.version ? reviewState.opinion : null
+  const [reviewer, setReviewer] = useState(currentOpinion?.reviewer ?? 'Dr Eva van Dijk')
+  const [opinion, setOpinion] = useState(currentOpinion?.opinion ?? '')
+  const [nextActor, setNextActor] = useState(
+    currentOpinion?.next_responsibility.actor ?? 'Utrecht colorectal MDO coordinator',
+  )
+  const [nextAction, setNextAction] = useState(
+    currentOpinion?.next_responsibility.action ??
+      'Schedule multidisciplinary review of the versioned synthetic case.',
+  )
+  const [conditions, setConditions] = useState<ReviewCondition[]>(
+    currentOpinion?.conditions ?? reviewState.required_conditions,
+  )
+
+  function updateCondition(issueId: string, update: Partial<ReviewCondition>) {
+    setConditions((items) =>
+      items.map((item) => (item.issue_id === issueId ? { ...item, ...update } : item)),
+    )
+  }
+
+  function submitReview() {
+    onSaveReview({
+      case_version: preparedCase.version,
+      reviewer,
+      opinion,
+      conditions: conditions.map((condition) => ({
+        issue_id: condition.issue_id,
+        status: condition.status,
+        resolution: condition.resolution,
+      })),
+      next_responsibility: {
+        actor: nextActor,
+        action: nextAction,
+      },
+    })
+  }
+
+  return (
+    <section className="human-review" aria-label="Human review and MDO handoff">
+      <div className="review-heading">
+        <div>
+          <p className="eyebrow">Human judgement · bound to case v{preparedCase.version}</p>
+          <h2>Opinion, conditions, and next responsibility</h2>
+        </div>
+        <span className={reviewState.handoff_ready ? 'ready-state ready' : 'ready-state'}>
+          {reviewState.handoff_ready ? 'Ready to create handoff' : 'Handoff gated'}
+        </span>
+      </div>
+
+      {reviewState.stale && reviewState.opinion && (
+        <div className="stale-review" role="status">
+          <History size={19} />
+          <div>
+            <strong>Previous opinion is stale</strong>
+            <p>
+              Opinion {reviewState.opinion.id} covers case v{reviewState.opinion.case_version}.
+              Case v{preparedCase.version} requires a new human review and cannot inherit approval.
+            </p>
+          </div>
+        </div>
+      )}
+
+      <div className="review-layout">
+        <div className="review-form">
+          <label>
+            Reviewing clinician
+            <input value={reviewer} onChange={(event) => setReviewer(event.target.value)} />
+          </label>
+          <label>
+            Considered human opinion
+            <textarea
+              rows={4}
+              value={opinion}
+              onChange={(event) => setOpinion(event.target.value)}
+              placeholder="Record the clinical opinion without presenting it as an automated conclusion."
+            />
+          </label>
+          <div className="responsibility-fields">
+            <label>
+              Next responsible actor
+              <input value={nextActor} onChange={(event) => setNextActor(event.target.value)} />
+            </label>
+            <label>
+              Explicit next action
+              <input value={nextAction} onChange={(event) => setNextAction(event.target.value)} />
+            </label>
+          </div>
+          <button
+            className="primary-action"
+            onClick={submitReview}
+            disabled={busy || !reviewer.trim() || !opinion.trim() || !nextActor.trim() || !nextAction.trim()}
+          >
+            <ClipboardCheck size={18} />
+            {busy ? 'Saving review…' : `Save opinion for case v${preparedCase.version}`}
+          </button>
+        </div>
+
+        <div className="review-conditions">
+          <div className="conditions-heading">
+            <strong>Required evidence and review conditions</strong>
+            <small>Every item needs an explicit resolution before handoff.</small>
+          </div>
+          {conditions.map((condition) => (
+            <article className="review-condition" key={condition.issue_id}>
+              <label className="condition-toggle">
+                <input
+                  type="checkbox"
+                  checked={condition.status === 'resolved'}
+                  onChange={(event) =>
+                    updateCondition(condition.issue_id, {
+                      status: event.target.checked ? 'resolved' : 'open',
+                    })
+                  }
+                />
+                <span>
+                  <strong>
+                    {condition.kind === 'required_evidence'
+                      ? 'Required evidence condition'
+                      : 'Review condition'}
+                  </strong>
+                  <small>{condition.issue_id}</small>
+                </span>
+              </label>
+              <p>{condition.description}</p>
+              <label>
+                Resolution note
+                <input
+                  value={condition.resolution}
+                  onChange={(event) =>
+                    updateCondition(condition.issue_id, { resolution: event.target.value })
+                  }
+                  placeholder="Required when marked resolved"
+                />
+              </label>
+            </article>
+          ))}
+        </div>
+      </div>
+
+      <div className="handoff-zone">
+        <div>
+          <p className="eyebrow">Versioned narrative handoff</p>
+          <h3>Continue into the autonomous MDO demonstration</h3>
+          <p>
+            Version one does not synchronize runtime state. The MDO uses a separate backend;
+            this app creates a controlled deep link from a persisted continuity manifest.
+          </p>
+          {!reviewState.handoff_ready && (
+            <ul>
+              {reviewState.blockers.map((blocker) => (
+                <li key={blocker}>{blocker}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <button
+          className="handoff-action"
+          onClick={onCreateHandoff}
+          disabled={busy || !reviewState.handoff_ready}
+        >
+          <ExternalLink size={18} />
+          Create MDO handoff manifest
+        </button>
+      </div>
+
+      {handoffManifest && (
+        <article className="handoff-manifest" aria-label="MDO handoff manifest">
+          <div className="manifest-title">
+            <div>
+              <p className="eyebrow">Manifest v{handoffManifest.version}</p>
+              <h3>{handoffManifest.id}</h3>
+            </div>
+            <span>{handoffManifest.synthetic_labels.join(' · ')}</span>
+          </div>
+          <dl>
+            <div>
+              <dt>Case ID</dt>
+              <dd>{handoffManifest.case_id}</dd>
+            </div>
+            <div>
+              <dt>Evidence version</dt>
+              <dd>Case v{handoffManifest.evidence_version}</dd>
+            </div>
+            <div>
+              <dt>Clinical question</dt>
+              <dd>{handoffManifest.clinical_question}</dd>
+            </div>
+            <div>
+              <dt>Next actor and action</dt>
+              <dd>
+                {handoffManifest.responsibility.actor}: {handoffManifest.responsibility.action}
+              </dd>
+            </div>
+            <div>
+              <dt>Unresolved issues carried forward</dt>
+              <dd>
+                {handoffManifest.unresolved_issues.length
+                  ? handoffManifest.unresolved_issues.join(' · ')
+                  : 'None'}
+              </dd>
+            </div>
+          </dl>
+          <p className="backend-notice">{handoffManifest.backend_notice}</p>
+          <a
+            className="primary-action"
+            href={handoffManifest.launch_url}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Launch separate MDO demonstration
+            <ArrowRight size={18} />
+          </a>
+        </article>
       )}
     </section>
   )

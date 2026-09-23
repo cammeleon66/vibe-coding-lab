@@ -42,6 +42,16 @@ class FindingSeverity(StrEnum):
     REQUIRED = "required"
 
 
+class ReviewConditionStatus(StrEnum):
+    OPEN = "open"
+    RESOLVED = "resolved"
+
+
+class ReviewConditionKind(StrEnum):
+    REQUIRED_EVIDENCE = "required_evidence"
+    REVIEW = "review"
+
+
 class ClinicalNeed(BaseModel):
     case_id: str = "CRC-EU-001"
     diagnosis: str = "Metastatic colorectal cancer with liver-limited metastases"
@@ -280,12 +290,81 @@ class CaseUpdateError(BaseModel):
     preserved_version: int
 
 
+class ReviewConditionDecision(BaseModel):
+    issue_id: str = Field(min_length=1)
+    status: ReviewConditionStatus
+    resolution: str = ""
+
+
+class HumanOpinionCreate(BaseModel):
+    case_version: int = Field(ge=1)
+    reviewer: str = Field(min_length=1)
+    opinion: str = Field(min_length=1)
+    conditions: list[ReviewConditionDecision]
+    next_responsibility: Responsibility
+
+
+class ReviewCondition(BaseModel):
+    issue_id: str
+    kind: ReviewConditionKind
+    description: str
+    status: ReviewConditionStatus
+    resolution: str
+
+
+class HumanOpinion(BaseModel):
+    id: str
+    case_id: str
+    case_version: int
+    reviewer: str
+    opinion: str
+    conditions: list[ReviewCondition]
+    next_responsibility: Responsibility
+    recorded_at: datetime
+
+
+class HumanReviewState(BaseModel):
+    current_case_version: int
+    opinion: HumanOpinion | None
+    required_conditions: list[ReviewCondition]
+    stale: bool
+    handoff_ready: bool
+    blockers: list[str]
+
+
+class HandoffCreate(BaseModel):
+    case_version: int = Field(ge=1)
+    opinion_id: str = Field(min_length=1)
+
+
+class HandoffManifest(BaseModel):
+    id: str
+    version: int
+    case_id: str
+    clinical_question: str
+    evidence_version: int
+    source_evidence_inventory: list[str]
+    unresolved_issues: list[str]
+    opinion_id: str
+    responsibility: Responsibility
+    created_at: datetime
+    synthetic_labels: list[str]
+    launch_url: str
+    separate_backend: bool = True
+    backend_notice: str = (
+        "Version one launches the autonomous MDO demonstration with a narrative deep link. "
+        "The MDO uses a separate backend and does not receive shared runtime state."
+    )
+
+
 class DemoState(BaseModel):
     current_referral: Referral | None = None
     current_prepared_case: PreparedCase | None = None
     prepared_case_versions: list[PreparedCase] = Field(default_factory=list)
     processed_evidence_events: dict[str, str] = Field(default_factory=dict)
     case_update_error: CaseUpdateError | None = None
+    human_opinions: list[HumanOpinion] = Field(default_factory=list)
+    handoff_manifests: list[HandoffManifest] = Field(default_factory=list)
 
 
 def utc_now() -> datetime:

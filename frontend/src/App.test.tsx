@@ -502,3 +502,165 @@ describe('prepared clinical workspace', () => {
     expect(screen.queryByText(/what changed from case v1 to v2/i)).not.toBeInTheDocument()
   })
 })
+
+const requiredConditions = [
+  {
+    issue_id: 'missing-molecular-profile',
+    kind: 'required_evidence',
+    description: 'RAS, BRAF and MMR/MSI evidence is missing.',
+    status: 'open',
+    resolution: '',
+  },
+  {
+    issue_id: 'conflict-diagnosis-date',
+    kind: 'review',
+    description: 'Diagnosis date differs across source institutions.',
+    status: 'open',
+    resolution: '',
+  },
+]
+
+const savedOpinion = {
+  id: 'OP-REVIEW1',
+  case_id: 'CRC-EU-001',
+  case_version: 1,
+  reviewer: 'Dr Eva van Dijk',
+  opinion: 'Suitable for multidisciplinary review after explicit condition resolution.',
+  conditions: requiredConditions.map((condition) => ({
+    ...condition,
+    status: 'resolved',
+    resolution: 'Reviewed against the source record.',
+  })),
+  next_responsibility: {
+    actor: 'Utrecht colorectal MDO coordinator',
+    action: 'Schedule multidisciplinary review of the versioned synthetic case.',
+  },
+  recorded_at: '2026-09-23T10:30:00Z',
+}
+
+const handoffManifest = {
+  id: 'MDO-CRC-EU-001-V1',
+  version: 1,
+  case_id: 'CRC-EU-001',
+  clinical_question: preparedCase.clinical_question,
+  evidence_version: 1,
+  source_evidence_inventory: ['MIL-CDA-001'],
+  unresolved_issues: [],
+  opinion_id: savedOpinion.id,
+  responsibility: savedOpinion.next_responsibility,
+  created_at: '2026-09-23T10:31:00Z',
+  synthetic_labels: ['synthetic-case', 'demonstration-only', 'not-for-clinical-use'],
+  launch_url:
+    'http://localhost:5174?case_id=CRC-EU-001&evidence_version=1&handoff_manifest=MDO-CRC-EU-001-V1',
+  separate_backend: true,
+  backend_notice:
+    'Version one launches the autonomous MDO demonstration with a narrative deep link. The MDO uses a separate backend and does not receive shared runtime state.',
+}
+
+describe('human responsibility and MDO handoff', () => {
+  it('records version-bound responsibility and creates a controlled continuity manifest', async () => {
+    const fetchMock = vi.fn((url: string, options?: RequestInit) => {
+      if (url === '/api/referrals/current') return response(referral)
+      if (url === '/api/cases/current') return response(preparedCase)
+      if (url === '/api/cases/current/update-error') return response(null)
+      if (url === '/api/cases/current/handoffs' && !options?.method) return response([])
+      if (url === '/api/cases/current/review') {
+        return response({
+          current_case_version: 1,
+          opinion: null,
+          required_conditions: requiredConditions,
+          stale: false,
+          handoff_ready: false,
+          blockers: ['Record a human opinion for case v1.'],
+        })
+      }
+      if (url === '/api/cases/current/reviews') {
+        return response(
+          {
+            current_case_version: 1,
+            opinion: savedOpinion,
+            required_conditions: savedOpinion.conditions,
+            stale: false,
+            handoff_ready: true,
+            blockers: [],
+          },
+          201,
+        )
+      }
+      if (url === '/api/cases/current/handoffs' && options?.method === 'POST') {
+        return response(handoffManifest, 201)
+      }
+      throw new Error(`Unexpected request: ${url} ${options?.method}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.type(
+      await screen.findByLabelText('Considered human opinion'),
+      savedOpinion.opinion,
+    )
+    for (const checkbox of screen.getAllByRole('checkbox')) {
+      await user.click(checkbox)
+    }
+    for (const note of screen.getAllByPlaceholderText('Required when marked resolved')) {
+      await user.type(note, 'Reviewed against the source record.')
+    }
+    await user.click(screen.getByRole('button', { name: /save opinion for case v1/i }))
+
+    expect(
+      await screen.findByText('Ready to create handoff'),
+    ).toBeInTheDocument()
+    const reviewRequest = fetchMock.mock.calls.find(
+      ([url]) => url === '/api/cases/current/reviews',
+    )
+    expect(JSON.parse(String(reviewRequest?.[1]?.body))).toMatchObject({
+      case_version: 1,
+      reviewer: 'Dr Eva van Dijk',
+      next_responsibility: savedOpinion.next_responsibility,
+    })
+
+    await user.click(screen.getByRole('button', { name: /create mdo handoff manifest/i }))
+
+    expect(await screen.findByText('MDO-CRC-EU-001-V1')).toBeInTheDocument()
+    expect(screen.getAllByText(preparedCase.clinical_question).length).toBeGreaterThan(1)
+    expect(screen.getAllByText(/MDO uses a separate backend/i).length).toBeGreaterThan(0)
+    expect(screen.getByRole('link', { name: /launch separate MDO demonstration/i })).toHaveAttribute(
+      'href',
+      handoffManifest.launch_url,
+    )
+  })
+
+  it('shows that an older opinion is stale and keeps handoff gated', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url === '/api/referrals/current') return response(referral)
+        if (url === '/api/cases/current') return response(updatedCase)
+        if (url === '/api/cases/current/update-error') return response(null)
+        if (url === '/api/cases/current/versions/1') return response(preparedCase)
+        if (url === '/api/cases/current/handoffs') return response([handoffManifest])
+        if (url === '/api/cases/current/review') {
+          return response({
+            current_case_version: 2,
+            opinion: savedOpinion,
+            required_conditions: requiredConditions,
+            stale: true,
+            handoff_ready: false,
+            blockers: ['Opinion OP-REVIEW1 applies to case v1; case v2 requires a new review.'],
+          })
+        }
+        throw new Error(`Unexpected request: ${url}`)
+      }),
+    )
+    render(<App />)
+
+    expect(await screen.findByText('Previous opinion is stale')).toBeInTheDocument()
+    expect(screen.getByText(/covers case v1/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /create mdo handoff manifest/i })).toBeDisabled()
+    expect(screen.getByText(/case v2 requires a new review/i)).toBeInTheDocument()
+    expect(
+      screen.queryByRole('link', { name: /launch separate MDO demonstration/i }),
+    ).not.toBeInTheDocument()
+  })
+})
