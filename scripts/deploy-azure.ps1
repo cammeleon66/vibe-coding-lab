@@ -4,7 +4,7 @@ param(
     [string]$Location = "westeurope",
     [string]$Prefix = "oncology-collab-demo",
     [string]$OwnerEmail = "admin@MngEnvMCAP670682.onmicrosoft.com",
-    [int]$BudgetAmount = 10,
+    [int]$BudgetAmount = 35,
     [int]$ExpiryDays = 14
 )
 
@@ -66,63 +66,6 @@ $acrLoginServer = $outputs.acrLoginServer.value
 $imageTag = (git rev-parse --short HEAD).Trim()
 $image = "$acrLoginServer/$Prefix`:$imageTag"
 
-$storageAccess = Invoke-AzureCliJson -Arguments @(
-    "storage", "account", "show",
-    "--name", $outputs.milanAccountName.value,
-    "--resource-group", $milanResourceGroup,
-    "--query", "{publicNetworkAccess:publicNetworkAccess}",
-    "--output", "json"
-)
-if ($storageAccess.publicNetworkAccess -ne "Enabled") {
-    throw (
-        "The subscription forced Blob publicNetworkAccess=$($storageAccess.publicNetworkAccess). " +
-        "Private networking requires separate architecture and cost approval before deployment."
-    )
-}
-
-$deployerObjectId = (
-    Invoke-AzureCli -Arguments @("ad", "signed-in-user", "show", "--query", "id", "--output", "tsv")
-).Trim()
-$blobContributorRole = "Storage Blob Data Contributor"
-$temporaryAssignments = @()
-try {
-    foreach ($accountName in @($outputs.milanAccountName.value, $outputs.utrechtAccountName.value)) {
-        $scope = (
-            Invoke-AzureCli -Arguments @(
-                "storage", "account", "show",
-                "--name", $accountName,
-                "--query", "id",
-                "--output", "tsv"
-            )
-        ).Trim()
-        $assignment = Invoke-AzureCliJson -Arguments @(
-            "role", "assignment", "create",
-            "--assignee-object-id", $deployerObjectId,
-            "--assignee-principal-type", "User",
-            "--role", $blobContributorRole,
-            "--scope", $scope,
-            "--only-show-errors",
-            "--output", "json"
-        )
-        $temporaryAssignments += $assignment.id
-    }
-    Start-Sleep -Seconds 30
-    Write-Host "Uploading approved synthetic fixtures through Microsoft Entra..."
-    & "$repoRoot\.venv\Scripts\python.exe" "$repoRoot\scripts\upload_azure_fixtures.py" `
-        --milan-account-url $outputs.milanAccountUrl.value `
-        --utrecht-account-url $outputs.utrechtAccountUrl.value
-    if ($LASTEXITCODE -ne 0) {
-        throw "Synthetic fixture upload failed."
-    }
-}
-finally {
-    foreach ($assignmentId in $temporaryAssignments) {
-        [void](Invoke-AzureCli -Arguments @(
-            "role", "assignment", "delete", "--ids", $assignmentId, "--only-show-errors"
-        ))
-    }
-}
-
 Write-Host "Building the application image in Azure Container Registry..."
 [void](Invoke-AzureCli -Arguments @(
     "acr", "build",
@@ -139,32 +82,89 @@ $secretBytes = New-Object byte[] 32
 $eventGridSecret = [Convert]::ToBase64String($secretBytes)
 
 Write-Host "Deploying the Container App..."
-$app = Invoke-AzureCliJson -Arguments @(
-    "deployment", "group", "create",
-    "--name", "$Prefix-app-$timestamp",
-    "--resource-group", $platformResourceGroup,
-    "--template-file", "$repoRoot\infra\application.bicep",
-    "--parameters",
-    "prefix=$Prefix",
-    "image=$image",
-    "acrLoginServer=$acrLoginServer",
-    "environmentName=$($outputs.environmentName.value)",
-    "identityResourceId=$($outputs.identityResourceId.value)",
-    "identityClientId=$($outputs.identityClientId.value)",
-    "insightsName=$($outputs.insightsName.value)",
-    "milanAccountUrl=$($outputs.milanAccountUrl.value)",
-    "utrechtAccountUrl=$($outputs.utrechtAccountUrl.value)",
-    "sharedAccountUrl=$($outputs.sharedAccountUrl.value)",
-    "eventGridWebhookSecret=$eventGridSecret",
-    "ownerEmail=$OwnerEmail",
-    "expiryDate=$expiry",
-    "--only-show-errors",
-    "--output", "json"
-)
+$blobContributorRole = "Storage Blob Data Contributor"
+$temporaryAssignments = @()
+try {
+    foreach ($accountName in @($outputs.milanAccountName.value, $outputs.utrechtAccountName.value)) {
+        $scope = (
+            Invoke-AzureCli -Arguments @(
+                "storage", "account", "show",
+                "--name", $accountName,
+                "--query", "id",
+                "--output", "tsv"
+            )
+        ).Trim()
+        $assignment = Invoke-AzureCliJson -Arguments @(
+            "role", "assignment", "create",
+            "--assignee-object-id", $outputs.identityPrincipalId.value,
+            "--assignee-principal-type", "ServicePrincipal",
+            "--role", $blobContributorRole,
+            "--scope", $scope,
+            "--only-show-errors",
+            "--output", "json"
+        )
+        $temporaryAssignments += $assignment.id
+    }
+    Start-Sleep -Seconds 60
+    $app = Invoke-AzureCliJson -Arguments @(
+        "deployment", "group", "create",
+        "--name", "$Prefix-app-$timestamp",
+        "--resource-group", $platformResourceGroup,
+        "--template-file", "$repoRoot\infra\application.bicep",
+        "--parameters",
+        "prefix=$Prefix",
+        "image=$image",
+        "acrLoginServer=$acrLoginServer",
+        "environmentName=$($outputs.environmentName.value)",
+        "identityResourceId=$($outputs.identityResourceId.value)",
+        "identityClientId=$($outputs.identityClientId.value)",
+        "insightsName=$($outputs.insightsName.value)",
+        "milanAccountUrl=$($outputs.milanAccountUrl.value)",
+        "utrechtAccountUrl=$($outputs.utrechtAccountUrl.value)",
+        "sharedAccountUrl=$($outputs.sharedAccountUrl.value)",
+        "eventGridWebhookSecret=$eventGridSecret",
+        "ownerEmail=$OwnerEmail",
+        "expiryDate=$expiry",
+        "seedSyntheticFixtures=true",
+        "--only-show-errors",
+        "--output", "json"
+    )
 
-$fqdn = $app.properties.outputs.fqdn.value
-$appName = $app.properties.outputs.applicationName.value
-$applicationUrl = "https://$fqdn"
+    $fqdn = $app.properties.outputs.fqdn.value
+    $appName = $app.properties.outputs.applicationName.value
+    $applicationUrl = "https://$fqdn"
+    $ready = $false
+    for ($attempt = 1; $attempt -le 30; $attempt++) {
+        try {
+            $preflight = Invoke-RestMethod -Uri "$applicationUrl/api/preflight" -TimeoutSec 20
+            if ($preflight.ready) {
+                $ready = $true
+                break
+            }
+        }
+        catch {
+            Start-Sleep -Seconds 10
+        }
+    }
+    if (-not $ready) {
+        throw "The private-networked Container App did not pass preflight."
+    }
+    [void](Invoke-AzureCli -Arguments @(
+        "containerapp", "update",
+        "--resource-group", $platformResourceGroup,
+        "--name", $appName,
+        "--set-env-vars", "SEED_AZURE_FIXTURES=false",
+        "--only-show-errors",
+        "--output", "none"
+    ))
+}
+finally {
+    foreach ($assignmentId in $temporaryAssignments) {
+        [void](Invoke-AzureCli -Arguments @(
+            "role", "assignment", "delete", "--ids", $assignmentId, "--only-show-errors"
+        ))
+    }
+}
 
 Write-Host "Creating the Event Grid evidence-delivery subscription..."
 [void](Invoke-AzureCli -Arguments @(

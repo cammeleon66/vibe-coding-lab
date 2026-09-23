@@ -8,6 +8,65 @@ var workspaceName = '${prefix}-logs'
 var insightsName = '${prefix}-insights'
 var environmentName = '${prefix}-env'
 var identityName = '${prefix}-identity'
+var virtualNetworkName = '${prefix}-vnet'
+var blobDnsZoneName = 'privatelink.blob.${az.environment().suffixes.storage}'
+
+resource virtualNetwork 'Microsoft.Network/virtualNetworks@2024-07-01' = {
+  name: virtualNetworkName
+  location: location
+  tags: tags
+  properties: {
+    addressSpace: {
+      addressPrefixes: [
+        '10.40.0.0/16'
+      ]
+    }
+  }
+}
+
+resource containerAppsSubnet 'Microsoft.Network/virtualNetworks/subnets@2024-07-01' = {
+  parent: virtualNetwork
+  name: 'container-apps'
+  properties: {
+    addressPrefix: '10.40.0.0/27'
+    delegations: [
+      {
+        name: 'Microsoft.App.environments'
+        properties: {
+          serviceName: 'Microsoft.App/environments'
+        }
+      }
+    ]
+  }
+}
+
+resource privateEndpointsSubnet 'Microsoft.Network/virtualNetworks/subnets@2024-07-01' = {
+  parent: virtualNetwork
+  name: 'private-endpoints'
+  properties: {
+    addressPrefix: '10.40.1.0/24'
+    privateEndpointNetworkPolicies: 'Disabled'
+  }
+}
+
+resource blobDnsZone 'Microsoft.Network/privateDnsZones@2024-06-01' = {
+  name: blobDnsZoneName
+  location: 'global'
+  tags: tags
+}
+
+resource blobDnsLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2024-06-01' = {
+  parent: blobDnsZone
+  name: '${prefix}-blob-link'
+  location: 'global'
+  tags: tags
+  properties: {
+    registrationEnabled: false
+    virtualNetwork: {
+      id: virtualNetwork.id
+    }
+  }
+}
 
 resource identity 'Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30' = {
   name: identityName
@@ -75,6 +134,10 @@ resource environment 'Microsoft.App/managedEnvironments@2025-01-01' = {
   location: location
   tags: tags
   properties: {
+    vnetConfiguration: {
+      infrastructureSubnetId: containerAppsSubnet.id
+      internal: false
+    }
     appLogsConfiguration: {
       destination: 'log-analytics'
       logAnalyticsConfiguration: {
@@ -93,3 +156,5 @@ output identityPrincipalId string = identity.properties.principalId
 output identityResourceId string = identity.id
 output insightsName string = insights.name
 output insightsConnectionString string = insights.properties.ConnectionString
+output privateEndpointSubnetId string = privateEndpointsSubnet.id
+output blobPrivateDnsZoneId string = blobDnsZone.id

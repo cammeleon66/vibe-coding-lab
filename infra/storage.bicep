@@ -4,6 +4,8 @@ param containerName string
 param principalId string
 param roleDefinitionId string
 param writeContainerName string = ''
+param privateEndpointSubnetId string
+param blobPrivateDnsZoneId string
 param tags object
 
 resource storage 'Microsoft.Storage/storageAccounts@2025-06-01' = {
@@ -20,7 +22,7 @@ resource storage 'Microsoft.Storage/storageAccounts@2025-06-01' = {
     allowSharedKeyAccess: false
     defaultToOAuthAuthentication: true
     minimumTlsVersion: 'TLS1_2'
-    publicNetworkAccess: 'Enabled'
+    publicNetworkAccess: 'Disabled'
     supportsHttpsTrafficOnly: true
   }
 }
@@ -72,6 +74,43 @@ resource writeRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!e
       'Microsoft.Authorization/roleDefinitions',
       'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
     )
+  }
+}
+
+resource privateEndpoint 'Microsoft.Network/privateEndpoints@2024-07-01' = {
+  name: '${storage.name}-blob-pe'
+  location: location
+  tags: tags
+  properties: {
+    subnet: {
+      id: privateEndpointSubnetId
+    }
+    privateLinkServiceConnections: [
+      {
+        name: '${storage.name}-blob'
+        properties: {
+          privateLinkServiceId: storage.id
+          groupIds: [
+            'blob'
+          ]
+        }
+      }
+    ]
+  }
+}
+
+resource privateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2024-07-01' = {
+  parent: privateEndpoint
+  name: 'default'
+  properties: {
+    privateDnsZoneConfigs: [
+      {
+        name: 'blob'
+        properties: {
+          privateDnsZoneId: blobPrivateDnsZoneId
+        }
+      }
+    ]
   }
 }
 

@@ -401,7 +401,7 @@ The local product is visually compelling, deterministic, accessible, reviewable,
 
 ## INC-007: Azure and Fabric deployment
 
-**Status:** Blocked on revised networking and cost approval
+**Status:** In progress; three-private-endpoint deployment approved
 
 ### Original gate
 
@@ -450,9 +450,9 @@ private networking. The failed base deployment was cleaned up before an
 application became live. See
 [`../decisions/azure-deployment-networking.md`](../decisions/azure-deployment-networking.md).
 
-Another deployment requires an explicit choice between three private endpoints,
-one consolidated storage account/private endpoint, a different approved
-subscription, or stopping at the local rehearsal.
+The user selected the three-private-endpoint option with a EUR 35 budget alert.
+Deployment may proceed with a VNet-integrated Container Apps environment, one
+private endpoint per storage account, and linked Blob private DNS.
 
 ## Technical quality gates
 

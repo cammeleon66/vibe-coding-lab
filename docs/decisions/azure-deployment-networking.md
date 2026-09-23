@@ -1,7 +1,7 @@
 # Azure deployment networking decision
 
 **Decision ID:** DEC-007  
-**Status:** Awaiting re-approval  
+**Status:** Approved  
 **Date:** 2026-09-23  
 **Related issue:** GitHub #6 / INC-007
 
@@ -54,7 +54,22 @@ account-level isolation is important to the demonstration. Otherwise, select a
 different explicitly approved development subscription that permits public
 Blob endpoints. Do not silently consolidate storage accounts.
 
-## Re-approval required
+## Approval update
 
-The user must select an option and approve its subscription, budget, identity,
-networking, and teardown impact before another deployment attempt.
+**Decision:** Three private endpoints approved.
+
+**Approver:** User  
+**Approval statement:** “ok go for three private endpoints”  
+**Date:** 2026-09-23  
+**Approved scope:** Preserve the three storage accounts; add a dedicated
+Container Apps subnet, a private-endpoint subnet, three Blob private endpoints,
+one linked Blob private DNS zone, and a EUR 35 monthly budget alert. Keep the
+previously approved identity, monitoring, disabled Azure OpenAI, deferred
+Fabric, and 14-day teardown boundaries.
+
+**Rejected alternatives:** Consolidating storage accounts and moving to a
+different subscription.
+
+**Re-approval conditions:** More than three private endpoints, a monthly budget
+above EUR 35, NAT Gateway or firewall introduction, Fabric changes, Azure
+OpenAI usage, or a change to the three-account isolation model.

@@ -4,7 +4,7 @@ param location string = 'westeurope'
 param prefix string = 'oncology-collab-demo'
 param ownerEmail string
 param expiryDate string
-param budgetAmount int = 10
+param budgetAmount int = 35
 param budgetStartDate string
 param budgetEndDate string
 
@@ -61,6 +61,8 @@ module milan 'storage.bicep' = {
     principalId: platform.outputs.identityPrincipalId
     roleDefinitionId: blobReaderRole
     writeContainerName: 'events'
+    privateEndpointSubnetId: platform.outputs.privateEndpointSubnetId
+    blobPrivateDnsZoneId: platform.outputs.blobPrivateDnsZoneId
     tags: commonTags
   }
 }
@@ -74,6 +76,8 @@ module utrecht 'storage.bicep' = {
     containerName: 'source'
     principalId: platform.outputs.identityPrincipalId
     roleDefinitionId: blobReaderRole
+    privateEndpointSubnetId: platform.outputs.privateEndpointSubnetId
+    blobPrivateDnsZoneId: platform.outputs.blobPrivateDnsZoneId
     tags: commonTags
   }
 }
@@ -87,6 +91,8 @@ module shared 'storage.bicep' = {
     containerName: 'collaboration'
     principalId: platform.outputs.identityPrincipalId
     roleDefinitionId: blobContributorRole
+    privateEndpointSubnetId: platform.outputs.privateEndpointSubnetId
+    blobPrivateDnsZoneId: platform.outputs.blobPrivateDnsZoneId
     tags: commonTags
   }
 }
@@ -131,6 +137,7 @@ output acrName string = platform.outputs.acrName
 output acrLoginServer string = platform.outputs.acrLoginServer
 output environmentName string = platform.outputs.environmentName
 output identityClientId string = platform.outputs.identityClientId
+output identityPrincipalId string = platform.outputs.identityPrincipalId
 output identityResourceId string = platform.outputs.identityResourceId
 output insightsName string = platform.outputs.insightsName
 output insightsConnectionString string = platform.outputs.insightsConnectionString

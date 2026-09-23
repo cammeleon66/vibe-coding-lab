@@ -13,6 +13,7 @@ param sharedAccountUrl string
 param eventGridWebhookSecret string
 param ownerEmail string
 param expiryDate string
+param seedSyntheticFixtures bool = true
 param mdoDemoUrl string = 'https://github.com/jochenvw/mdt-observatory'
 
 var tags = {
@@ -106,6 +107,10 @@ resource application 'Microsoft.App/containerApps@2025-01-01' = {
             {
               name: 'MDO_DEMO_URL'
               value: mdoDemoUrl
+            }
+            {
+              name: 'SEED_AZURE_FIXTURES'
+              value: string(seedSyntheticFixtures)
             }
           ]
           resources: {

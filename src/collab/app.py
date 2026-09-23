@@ -25,6 +25,7 @@ from collab.azure_adapters import (
     create_container_client,
     event_grid_blob_url,
     parse_event_grid_payload,
+    seed_synthetic_fixtures,
     subscription_validation_code,
 )
 from collab.directory import SyntheticExpertDirectory
@@ -137,6 +138,12 @@ def create_app(
             os.getenv("SHARED_STATE_CONTAINER", "collaboration"),
             credential,
         )
+        if os.getenv("SEED_AZURE_FIXTURES", "false").lower() == "true":
+            seed_synthetic_fixtures(
+                milan_container,
+                utrecht_container,
+                configured_fixture_root,
+            )
         configured_sources: list[InstitutionSource] = [
             AzureMilanSource(milan_container),
             AzureUtrechtSource(utrecht_container),

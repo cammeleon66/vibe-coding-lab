@@ -21,6 +21,7 @@ from collab.azure_adapters import (
     AzureLateImagingSource,
     AzureMilanSource,
     AzureUtrechtSource,
+    seed_synthetic_fixtures,
 )
 from collab.models import DemoState, EvidenceArrivalEvent
 from collab.persistence import JsonStateStore, StateConflictError
@@ -51,6 +52,9 @@ class FakeBlob:
         if self._name not in self._blobs:
             raise ResourceNotFoundError("missing")
         return FakeDownload(self._blobs[self._name], str(self._etags[self._name]))
+
+    def exists(self) -> bool:
+        return self._name in self._blobs
 
     def upload_blob(
         self,
@@ -133,6 +137,20 @@ def test_azure_blob_sources_preserve_cloud_retrieval_references() -> None:
         item.retrieval_reference.startswith("https://synthetic.blob.core.windows.net/source/")
         for item in [*initial, *imaging]
     )
+
+
+def test_synthetic_fixture_seeding_is_idempotent() -> None:
+    root = Path(__file__).parents[1] / "src" / "collab" / "fixtures"
+    milan = FakeContainer("source")
+    utrecht = FakeContainer("source")
+
+    first = seed_synthetic_fixtures(milan, utrecht, root)
+    second = seed_synthetic_fixtures(milan, utrecht, root)
+
+    assert first == 7
+    assert second == 0
+    assert set(milan.blobs) == {path.name for path in (root / "milan").iterdir()}
+    assert set(utrecht.blobs) == {path.name for path in (root / "utrecht").iterdir()}
 
 
 def test_azure_state_and_trigger_adapters_are_persistent_and_resettable() -> None:

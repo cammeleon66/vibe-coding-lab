@@ -33,6 +33,8 @@ class DownloadStream(Protocol):
 
 
 class BlobClient(Protocol):
+    def exists(self) -> bool: ...
+
     def download_blob(self) -> DownloadStream: ...
 
     def upload_blob(
@@ -103,6 +105,39 @@ def _with_azure_references(
         )
         for item in evidence
     ]
+
+
+def seed_synthetic_fixtures(
+    milan_container: BlobContainer,
+    utrecht_container: BlobContainer,
+    fixture_root: Path,
+) -> int:
+    uploaded = 0
+    for container, institution in (
+        (milan_container, "milan"),
+        (utrecht_container, "utrecht"),
+    ):
+        for path in sorted((fixture_root / institution).iterdir()):
+            if not path.is_file():
+                continue
+            blob = container.get_blob_client(path.name)
+            if blob.exists():
+                continue
+            content_type = (
+                "application/json"
+                if path.suffix == ".json"
+                else "application/xml"
+                if path.suffix == ".xml"
+                else "text/plain"
+            )
+            blob.upload_blob(
+                path.read_bytes(),
+                overwrite=False,
+                content_settings=ContentSettings(content_type=content_type),
+            )
+            uploaded += 1
+    logger.info("synthetic_fixtures_seeded", extra={"uploaded_count": uploaded})
+    return uploaded
 
 
 class AzureMilanSource:
