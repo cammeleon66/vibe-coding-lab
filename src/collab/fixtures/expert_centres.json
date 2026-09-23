@@ -1,0 +1,177 @@
+[
+  {
+    "id": "utrecht-crc",
+    "name": "UMC Utrecht",
+    "city": "Utrecht",
+    "country": "Netherlands",
+    "network_context": "European colorectal and liver-metastasis expertise",
+    "profile_label": "Simulated demonstration profile",
+    "expertise_tags": [
+      "metastatic colorectal cancer",
+      "liver metastases",
+      "conversion therapy",
+      "resectability",
+      "hepatobiliary multidisciplinary review",
+      "molecularly informed treatment"
+    ],
+    "accepted_evidence": [
+      "pathology",
+      "treatment_timeline",
+      "current_ct_summary",
+      "baseline_ct",
+      "restaging_mri",
+      "molecular_profile"
+    ],
+    "languages": ["Dutch", "English"],
+    "synthetic_availability": "Demonstration review slot available within two working days.",
+    "referral_pathway": "Synthetic cross-border specialist review with required imaging and molecular evidence.",
+    "requirements": [
+      {
+        "key": "baseline-ct",
+        "label": "Original baseline liver CT",
+        "evidence_type": "baseline_ct",
+        "rationale": "Original sites must remain traceable during conversion assessment."
+      },
+      {
+        "key": "restaging-mri",
+        "label": "Restaging liver MRI",
+        "evidence_type": "restaging_mri",
+        "rationale": "Current anatomy and vessel relationships are needed for specialist review."
+      },
+      {
+        "key": "pathology",
+        "label": "Pathology report",
+        "evidence_type": "pathology",
+        "rationale": "Histology and source diagnosis must remain inspectable."
+      },
+      {
+        "key": "molecular",
+        "label": "RAS, BRAF and MMR/MSI status",
+        "evidence_type": "molecular_profile",
+        "rationale": "Molecular context affects the interpretation of prior and future treatment."
+      },
+      {
+        "key": "treatment",
+        "label": "Treatment and response timeline",
+        "evidence_type": "treatment_timeline",
+        "rationale": "Conversion assessment requires the treatment sequence and observed response."
+      }
+    ],
+    "clinicians": [
+      {
+        "id": "eva-van-dijk",
+        "name": "Dr Eva van Dijk",
+        "role": "Colorectal medical oncologist",
+        "specialties": [
+          "metastatic colorectal cancer",
+          "conversion therapy",
+          "multidisciplinary liver review"
+        ],
+        "languages": ["Dutch", "English"],
+        "fictional": true,
+        "eligible": true
+      }
+    ],
+    "simulated": true
+  },
+  {
+    "id": "paris-liver",
+    "name": "Paris Hepatobiliary Oncology Centre",
+    "city": "Paris",
+    "country": "France",
+    "network_context": "European specialist surgical oncology network",
+    "profile_label": "Fully fictional demonstration centre",
+    "expertise_tags": [
+      "colorectal liver metastases",
+      "hepatobiliary surgery",
+      "resectability",
+      "ablation"
+    ],
+    "accepted_evidence": ["pathology", "current_ct_summary", "baseline_ct", "restaging_mri"],
+    "languages": ["French", "English"],
+    "synthetic_availability": "Demonstration review slot available next week.",
+    "referral_pathway": "Synthetic expert-centre review requiring complete imaging transfer.",
+    "requirements": [
+      {
+        "key": "baseline-ct",
+        "label": "Original baseline liver CT",
+        "evidence_type": "baseline_ct",
+        "rationale": "Baseline lesion mapping is required."
+      },
+      {
+        "key": "restaging-mri",
+        "label": "Restaging liver MRI",
+        "evidence_type": "restaging_mri",
+        "rationale": "Current liver anatomy is required."
+      },
+      {
+        "key": "pathology",
+        "label": "Pathology report",
+        "evidence_type": "pathology",
+        "rationale": "Diagnosis must be source verified."
+      }
+    ],
+    "clinicians": [
+      {
+        "id": "lea-martin",
+        "name": "Dr Léa Martin",
+        "role": "Hepatobiliary surgical oncologist",
+        "specialties": ["liver metastases", "resection", "ablation"],
+        "languages": ["French", "English"],
+        "fictional": true,
+        "eligible": true
+      }
+    ],
+    "simulated": true
+  },
+  {
+    "id": "barcelona-precision",
+    "name": "Barcelona Precision GI Oncology Centre",
+    "city": "Barcelona",
+    "country": "Spain",
+    "network_context": "European precision-oncology collaboration network",
+    "profile_label": "Fully fictional demonstration centre",
+    "expertise_tags": [
+      "metastatic colorectal cancer",
+      "molecular profiling",
+      "clinical trials",
+      "systemic treatment"
+    ],
+    "accepted_evidence": ["pathology", "treatment_timeline", "molecular_profile"],
+    "languages": ["Spanish", "Catalan", "English"],
+    "synthetic_availability": "Demonstration molecular review available after biomarker upload.",
+    "referral_pathway": "Synthetic molecular review requiring a complete biomarker panel.",
+    "requirements": [
+      {
+        "key": "pathology",
+        "label": "Pathology report",
+        "evidence_type": "pathology",
+        "rationale": "Diagnosis must be source verified."
+      },
+      {
+        "key": "molecular",
+        "label": "Complete molecular profile",
+        "evidence_type": "molecular_profile",
+        "rationale": "A molecular review cannot proceed without the relevant panel."
+      },
+      {
+        "key": "treatment",
+        "label": "Treatment and response timeline",
+        "evidence_type": "treatment_timeline",
+        "rationale": "Prior exposure and response shape trial and treatment relevance."
+      }
+    ],
+    "clinicians": [
+      {
+        "id": "sofia-costa",
+        "name": "Dr Sofía Costa",
+        "role": "Precision gastrointestinal oncologist",
+        "specialties": ["molecular profiling", "clinical trials", "colorectal cancer"],
+        "languages": ["Spanish", "Catalan", "English"],
+        "fictional": true,
+        "eligible": true
+      }
+    ],
+    "simulated": true
+  }
+]

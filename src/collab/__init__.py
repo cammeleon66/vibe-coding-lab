@@ -1,0 +1,1 @@
+"""European oncology collaboration demonstrator."""
