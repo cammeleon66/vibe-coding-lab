@@ -60,7 +60,7 @@ on the old code at the default regional phase.
 
 #### INC-016: Storyline screens
 
-**Status:** Complete on branch; not merged or deployed.
+**Status:** Complete, merged (PR #15) and live.
 
 **Validation evidence:**
 
@@ -72,7 +72,19 @@ on the old code at the default regional phase.
   titles with `display: none`, leaving the step buttons without accessible
   names.
 - Fresh storyline screenshots in `docs/demo/evidence/`; outdated captures
-  removed. Live verification is pending approval to deploy.
+  removed.
+- Deployed 2026-09-24 by updating the existing Container App in place (no
+  new Azure services; existing access code, secrets, managed identity, Event
+  Grid and expiry preserved): image `oncology-collab-demo:39b3f45`, revision
+  `oncology-collab-demo--story-39b3f45`. A first revision (`--0000015`)
+  failed activation without pulling its image; traffic stayed on
+  `--0000014`, and a forced new revision suffix resolved it.
+- Protected live verifier passed (2 regional and 3 international sources,
+  case versions 1 and 2 via Event Grid, MDO on version 2, 29 timeline
+  events, clean reset). Six live desktop/mobile Playwright checks with axe
+  passed; `live-*` captures stored in `docs/demo/evidence/`.
+- Rollback image: `oncology-collab-demo:c610b49` (revert frontend and backend
+  together, then select **Reset**).
 
 ### Local-to-European storyline extension
 

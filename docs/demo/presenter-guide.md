@@ -82,4 +82,6 @@ by `frontend/tests/storyline.spec.ts` into [`evidence/`](evidence/), named
 [`evidence/01-local-problem-desktop-chromium.png`](evidence/01-local-problem-desktop-chromium.png)
 and
 [`evidence/14-closing-outcome-mobile-chromium.png`](evidence/14-closing-outcome-mobile-chromium.png)).
-Live-environment captures for the storyline redesign have not been taken yet.
+Live-environment captures of the same steps (image `39b3f45`) use the
+`live-` prefix, for example
+[`evidence/live-14-closing-outcome-desktop-chromium.png`](evidence/live-14-closing-outcome-desktop-chromium.png).
