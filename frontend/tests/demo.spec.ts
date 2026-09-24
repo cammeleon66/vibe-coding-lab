@@ -30,8 +30,11 @@ async function completeRegionalOpening(
   await page.getByRole('button', { name: 'Approve regional sharing' }).click()
   await expect(page.getByText('Regional exchange complete')).toBeVisible()
   if (projectName) {
+    const prefix = process.env.DEMO_ACCESS_CODE
+      ? 'live-regional-proof'
+      : 'regional-proof'
     await page.screenshot({
-      path: `../docs/demo/evidence/regional-proof-${projectName}.png`,
+      path: `../docs/demo/evidence/${prefix}-${projectName}.png`,
       fullPage: true,
     })
   }
@@ -40,8 +43,9 @@ async function completeRegionalOpening(
     page.getByRole('heading', { name: 'Geography changes. The trust rules do not.' }),
   ).toBeVisible()
   if (projectName) {
+    const prefix = process.env.DEMO_ACCESS_CODE ? 'live-scale-reveal' : 'scale-reveal'
     await page.screenshot({
-      path: `../docs/demo/evidence/scale-reveal-${projectName}.png`,
+      path: `../docs/demo/evidence/${prefix}-${projectName}.png`,
       fullPage: true,
     })
   }

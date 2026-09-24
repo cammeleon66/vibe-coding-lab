@@ -72,6 +72,10 @@ claim is live.
 | Regional proof mobile | [`evidence/regional-proof-mobile-chromium.png`](evidence/regional-proof-mobile-chromium.png) |
 | European scale reveal desktop | [`evidence/scale-reveal-desktop-chromium.png`](evidence/scale-reveal-desktop-chromium.png) |
 | European scale reveal mobile | [`evidence/scale-reveal-mobile-chromium.png`](evidence/scale-reveal-mobile-chromium.png) |
+| Live regional proof desktop | [`evidence/live-regional-proof-desktop-chromium.png`](evidence/live-regional-proof-desktop-chromium.png) |
+| Live regional proof mobile | [`evidence/live-regional-proof-mobile-chromium.png`](evidence/live-regional-proof-mobile-chromium.png) |
+| Live European scale reveal desktop | [`evidence/live-scale-reveal-desktop-chromium.png`](evidence/live-scale-reveal-desktop-chromium.png) |
+| Live European scale reveal mobile | [`evidence/live-scale-reveal-mobile-chromium.png`](evidence/live-scale-reveal-mobile-chromium.png) |
 | Closed-loop desktop outcome | [`evidence/closed-loop-desktop-chromium.png`](evidence/closed-loop-desktop-chromium.png) |
 | Closed-loop mobile outcome | [`evidence/closed-loop-mobile-chromium.png`](evidence/closed-loop-mobile-chromium.png) |
 | Live Azure desktop outcome | [`evidence/live-closed-loop-desktop-chromium.png`](evidence/live-closed-loop-desktop-chromium.png) |

@@ -1,6 +1,6 @@
 # Implementation plan: European oncology collaboration demo
 
-**Status:** Closed-loop referral complete; local-to-European opening in progress
+**Status:** Local-to-European collaboration journey complete and live
 **Date:** 2026-09-24
 **Cloud deployment:** The closed-loop referral is live on the approved private
 Azure baseline. The local-first opening reuses that baseline without new
@@ -12,7 +12,7 @@ services or trust-boundary changes.
 
 #### INC-015: Regional proof and European scale reveal
 
-**Status:** Planned
+**Status:** Complete
 
 **Depends on:** INC-014.
 
@@ -44,6 +44,20 @@ to the existing Milan-to-Utrecht international referral.
 - Reset and refresh preserve correct local/international phase state.
 - Desktop/mobile, keyboard, axe, backend, frontend, and protected-live checks
   pass without adding Azure services.
+
+**Validation evidence:**
+
+- Persisted regional state, ordering, restore, reset, and international-entry
+  guards pass in the backend suite.
+- Desktop and mobile rehearsals complete the regional exchange, scale reveal,
+  international closed loop, keyboard path, and axe checks.
+- Container App image `oncology-collab-demo:5b051ba` is active in revision
+  `oncology-collab-demo--0000012`.
+- The protected verifier passed two regional sources, three international
+  sources, immutable versions 1 and 2, 29 persisted timeline events, refresh
+  restore, MDO closure, and final reset.
+- The existing access code, managed identity, storage, Event Grid, private
+  endpoints, monitoring, budget, and expiry were preserved.
 
 ### Outcome
 
