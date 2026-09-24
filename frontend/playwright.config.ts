@@ -9,19 +9,24 @@ export default defineConfig({
   retries: 0,
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
-    baseURL: liveBaseURL ?? 'http://127.0.0.1:8000',
+    baseURL: liveBaseURL ?? 'http://127.0.0.1:8100',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
   webServer: liveBaseURL
     ? undefined
-    : {
-        command:
-          'cmd /d /s /c "set RESEARCH_DEMO_AUTHORIZATION_CODE=research-code&& ..\\.venv\\Scripts\\uvicorn.exe collab.app:app --host 127.0.0.1 --port 8000"',
-        url: 'http://127.0.0.1:8000/api/health',
+    : (
+        [
+          ['nl', 8101],
+          ['de', 8102],
+          ['hub', 8100],
+        ] as const
+      ).map(([site, port]) => ({
+        command: `cmd /d /s /c "set SITE=${site}&& set PYTHONPATH=..\\src&& set FED_DATA_DIR=..\\.fed-e2e&& set FRONTEND_DIST=dist&& ..\\.venv\\Scripts\\python.exe -m uvicorn fednet.main:app --host 127.0.0.1 --port ${port}"`,
+        url: `http://127.0.0.1:${port}/api/health`,
         reuseExistingServer: false,
         timeout: 30_000,
-      },
+      })),
   projects: [
     {
       name: 'desktop-chromium',
