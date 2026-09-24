@@ -1,7 +1,7 @@
 :root {
   font-family: "Segoe UI Variable", "Aptos", "Segoe UI", sans-serif;
-  color: #10243d;
-  background: #f5f3ed;
+  color: #1f2933;
+  background: #eef1f4;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -10,7 +10,7 @@
 
 html {
   min-width: 320px;
-  background: #f5f3ed;
+  background: #eef1f4;
 }
 
 body {
@@ -28,11 +28,11 @@ a:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline: 3px solid #e25745;
-  outline-offset: 3px;
+  outline: 2px solid #0b5cad;
+  outline-offset: 2px;
 }
 
 ::selection {
-  color: #fffdf8;
-  background: #174f8a;
+  color: #ffffff;
+  background: #0b5cad;
 }
