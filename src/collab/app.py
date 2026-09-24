@@ -31,6 +31,7 @@ from collab.azure_adapters import (
     subscription_validation_code,
 )
 from collab.directory import SyntheticExpertDirectory
+from collab.federation import local_milan_sources
 from collab.handoff import CollaborationWorkflow, HandoffError
 from collab.journey import ReferralJourney, ReferralJourneyError
 from collab.models import (
@@ -304,7 +305,10 @@ def create_app(
         "RESEARCH_DEMO_AUTHORIZATION_CODE"
     )
     research_sessions: set[str] = set()
-    referral_journey = ReferralJourney(store)
+    referral_journey = ReferralJourney(
+        store,
+        local_milan_sources(configured_fixture_root / "milan"),
+    )
 
     if configured_runtime_mode == "azure":
         connection_string = os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING")

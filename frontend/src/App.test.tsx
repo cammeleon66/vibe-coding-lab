@@ -109,6 +109,7 @@ const initialSnapshot = {
     },
   ],
   activity: [],
+  source_checks: [],
 }
 
 const milanSnapshot = {
@@ -147,7 +148,74 @@ const selectedSnapshot = {
       occurred_at: '2026-09-24T08:01:00Z',
     },
   ],
+  source_checks: [],
 }
+
+const sourceChecks = [
+  {
+    source_id: 'milan_ehr',
+    source_label: 'Milan electronic health record',
+    endpoint: '/api/journey/actions · source=milan_ehr',
+    patient_id: 'CRC-EU-001',
+    status: 'complete',
+    records: [
+      {
+        id: 'referral-summary',
+        label: 'Clinical referral summary',
+        status: 'available',
+        detail: 'CDA referral summary is available.',
+      },
+    ],
+    checked_at: '2026-09-24T08:02:00Z',
+    error: null,
+  },
+  {
+    source_id: 'milan_documents',
+    source_label: 'Milan document repository',
+    endpoint: '/api/journey/actions · source=milan_documents',
+    patient_id: 'CRC-EU-001',
+    status: 'complete',
+    records: [
+      {
+        id: 'pathology-report',
+        label: 'Pathology report',
+        status: 'available',
+        detail: 'Pathology source document is available.',
+      },
+      {
+        id: 'molecular-profile',
+        label: 'Extended molecular profile',
+        status: 'missing',
+        detail: 'Not available to the referral workflow.',
+      },
+    ],
+    checked_at: '2026-09-24T08:03:00Z',
+    error: null,
+  },
+  {
+    source_id: 'milan_pacs',
+    source_label: 'Milan imaging archive',
+    endpoint: '/api/journey/actions · source=milan_pacs',
+    patient_id: 'CRC-EU-001',
+    status: 'complete',
+    records: [
+      {
+        id: 'current-ct-summary',
+        label: 'Current CT summary',
+        status: 'available',
+        detail: 'Current CT summary is referenced in the clinical record.',
+      },
+      {
+        id: 'baseline-liver-ct',
+        label: 'Original baseline liver CT',
+        status: 'missing',
+        detail: 'Not available to the referral workflow.',
+      },
+    ],
+    checked_at: '2026-09-24T08:04:00Z',
+    error: null,
+  },
+] as const
 
 function response(payload: unknown, status = 200) {
   return Promise.resolve(
@@ -206,7 +274,34 @@ describe('referral journey foundation', () => {
       if (url === '/api/journey') return response(initialSnapshot)
       if (url === '/api/journey/actions') {
         const body = JSON.parse(String(options?.body))
-        return response(body.type === 'enter_role' ? milanSnapshot : selectedSnapshot)
+        if (body.type === 'enter_role') return response(milanSnapshot)
+        if (body.type === 'select_patient') return response(selectedSnapshot)
+        const sourceIndex = ['milan_ehr', 'milan_documents', 'milan_pacs'].indexOf(
+          body.source_id,
+        )
+        return response({
+          ...selectedSnapshot,
+          source_checks: sourceChecks.slice(0, sourceIndex + 1),
+          stages:
+            sourceIndex === 2
+              ? [
+                  { id: 'patient', label: 'Patient', status: 'complete', prerequisite: null },
+                  {
+                    id: 'local_data',
+                    label: 'Local data',
+                    status: 'complete',
+                    prerequisite: null,
+                  },
+                  {
+                    id: 'referral',
+                    label: 'Referral',
+                    status: 'current',
+                    prerequisite: null,
+                  },
+                  ...initialSnapshot.stages.slice(3),
+                ]
+              : selectedSnapshot.stages,
+        })
       }
       throw new Error(`Unexpected request: ${url}`)
     })
@@ -220,14 +315,13 @@ describe('referral journey foundation', () => {
     )
 
     expect(
-      await screen.findByRole('heading', {
-        name: 'Patient selected for referral preparation',
-      }),
+      await screen.findByRole('heading', { name: 'Check available data in Milan' }),
     ).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Active patients' })).not.toBeInTheDocument()
     expect(screen.getByText('Selected Giulia Moretti for referral preparation')).toBeInTheDocument()
-    expect(screen.getByText('Ready for local data check')).toBeInTheDocument()
-    expect(screen.getByRole('listitem', { current: 'step' })).toHaveTextContent('Local data')
+    expect(screen.getByText('Local data check complete')).toBeInTheDocument()
+    expect(screen.getByText('Original baseline liver CT')).toBeInTheDocument()
+    expect(screen.getByRole('listitem', { current: 'step' })).toHaveTextContent('Referral')
   })
 
   it('explains a locked future stage instead of appearing unresponsive', async () => {

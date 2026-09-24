@@ -165,6 +165,8 @@ picker, Milan workspace, three-patient worklist, and activity timeline.
 
 #### INC-009: Federated Milan data check
 
+**Status:** Complete
+
 **Depends on:** INC-008.
 
 **Outcome:** The audience sees real demo calls to three hospital-owned source
@@ -186,6 +188,21 @@ adapters and understands what data exists without seeing a centralized import.
 - Failure of one source remains visible and does not produce a success-shaped
   package.
 - The activity timeline is restored after refresh.
+
+**Validation evidence:**
+
+- Three local adapters implement one federated patient-source interface for the
+  Milan EHR, document repository, and imaging archive.
+- `query_source` actions run through `ReferralJourney`, which persists results
+  and success or failure activity without moving original source records into
+  collaboration state.
+- The split patient/source screen shows the real journey-action request, source
+  identity, available records, and missing evidence.
+- A failed source remains persisted as failed and keeps the referral stage
+  locked.
+- The complete 54-test backend suite, strict mypy, changed-file Ruff checks,
+  five Vitest tests, frontend lint/build, and four desktop/mobile Playwright
+  checks pass.
 
 #### INC-010: Expert destination and approved referral package
 

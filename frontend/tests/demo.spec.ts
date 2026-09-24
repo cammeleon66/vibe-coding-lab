@@ -37,12 +37,16 @@ test('enters the Milan workspace and selects the referral patient', async ({ pag
 
   await page.getByRole('button', { name: 'Prepare specialist referral' }).click()
   await expect(
-    page.getByRole('heading', { name: 'Patient selected for referral preparation' }),
+    page.getByRole('heading', { name: 'Check available data in Milan' }),
   ).toBeVisible()
-  await expect(page.getByText('Ready for local data check')).toBeVisible()
+  await expect(page.getByText('Local data check complete')).toBeVisible()
+  await expect(page.getByText('Original baseline liver CT')).toBeVisible()
   await expect(page.getByText('Selected Giulia Moretti for referral preparation')).toBeVisible()
   await expect(
-    page.getByRole('listitem').filter({ hasText: 'Local data' }),
+    page
+      .getByRole('list', { name: 'Referral stages' })
+      .getByRole('listitem')
+      .filter({ hasText: 'Referral' }),
   ).toHaveAttribute('aria-current', 'step')
 })
 

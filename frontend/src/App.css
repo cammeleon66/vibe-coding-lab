@@ -277,6 +277,104 @@
   box-shadow: inset 4px 0 var(--blue);
 }
 
+.federated-check-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.72fr) minmax(0, 1.28fr);
+  gap: 22px;
+  align-items: start;
+}
+
+.federated-check-layout .selected-patient-summary {
+  grid-template-columns: auto minmax(0, 1fr);
+  position: sticky;
+  top: 20px;
+}
+
+.source-check-list {
+  display: grid;
+  gap: 14px;
+}
+
+.source-check {
+  padding: 20px;
+  border: 1px solid var(--line);
+  background: var(--white);
+}
+
+.source-check.running {
+  border-color: rgba(23, 79, 138, 0.45);
+  box-shadow: inset 3px 0 var(--blue);
+}
+
+.source-check.failed {
+  border-color: rgba(160, 75, 50, 0.45);
+  box-shadow: inset 3px 0 var(--warning);
+}
+
+.source-check-heading {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.source-check-heading small,
+.source-check-heading code {
+  display: block;
+}
+
+.source-check-heading small {
+  margin-bottom: 5px;
+  font-weight: 800;
+}
+
+.source-check-heading code {
+  color: var(--ink-soft);
+  font-size: 0.7rem;
+}
+
+.source-check-heading > strong {
+  color: var(--blue-deep);
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+
+.source-record-status {
+  margin-top: 12px;
+  padding-top: 12px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  border-top: 1px solid var(--line);
+}
+
+.source-record-status.available svg {
+  color: var(--success);
+}
+
+.source-record-status.missing svg,
+.source-record-status.missing em {
+  color: var(--warning);
+}
+
+.source-record-status span strong,
+.source-record-status span small {
+  display: block;
+}
+
+.source-record-status span small {
+  margin-top: 3px;
+  color: var(--ink-soft);
+}
+
+.source-record-status em {
+  font-size: 0.68rem;
+  font-style: normal;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
 .selected-patient-summary p {
   color: var(--ink-soft);
 }
@@ -428,6 +526,14 @@
   .patient-card-heading,
   .selected-patient-summary {
     grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .federated-check-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .federated-check-layout .selected-patient-summary {
+    position: static;
   }
 
   .care-status,

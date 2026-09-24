@@ -4,8 +4,16 @@ import pytest
 from fastapi.testclient import TestClient
 
 from collab.app import create_app
+from collab.federation import FederatedSourceError, local_milan_sources
 from collab.journey import ReferralJourney, ReferralJourneyError
-from collab.models import EnterRoleAction, JourneyRole, SelectPatientAction
+from collab.models import (
+    EnterRoleAction,
+    FederatedSourceId,
+    JourneyRole,
+    QuerySourceAction,
+    SelectPatientAction,
+    SourceCheckResult,
+)
 from collab.persistence import JsonStateStore
 
 
@@ -69,6 +77,64 @@ def test_journey_state_restores_from_the_shared_state_store(tmp_path: Path) -> N
     assert restored.active_role == JourneyRole.MILAN
     assert restored.selected_patient_id == "CRC-EU-001"
     assert len(restored.activity) == 2
+
+
+def test_three_federated_source_queries_advance_to_referral(
+    tmp_path: Path,
+) -> None:
+    fixture_root = Path(__file__).parents[1] / "src" / "collab" / "fixtures" / "milan"
+    journey = ReferralJourney(
+        JsonStateStore(tmp_path / "state.json"),
+        local_milan_sources(fixture_root),
+    )
+    journey.apply(EnterRoleAction(role=JourneyRole.MILAN))
+    journey.apply(SelectPatientAction(patient_id="CRC-EU-001"))
+
+    for source_id in FederatedSourceId:
+        snapshot = journey.apply(QuerySourceAction(source_id=source_id))
+
+    assert [check.source_id for check in snapshot.source_checks] == list(FederatedSourceId)
+    assert all(check.status == "complete" for check in snapshot.source_checks)
+    assert snapshot.stages[2].status == "current"
+    assert [event.kind for event in snapshot.activity][-3:] == [
+        "source_queried",
+        "source_queried",
+        "source_queried",
+    ]
+    pacs = next(
+        check for check in snapshot.source_checks if check.source_id == FederatedSourceId.MILAN_PACS
+    )
+    assert [record.status for record in pacs.records] == [
+        "available",
+        "missing",
+        "missing",
+    ]
+
+
+def test_failed_source_query_remains_visible_and_blocks_referral(
+    tmp_path: Path,
+) -> None:
+    class FailingSource:
+        source_id = FederatedSourceId.MILAN_EHR
+        source_label = "Milan electronic health record"
+        endpoint = "/api/journey/actions · source=milan_ehr"
+
+        def query(self, patient_id: str) -> SourceCheckResult:
+            raise FederatedSourceError(f"EHR unavailable for {patient_id}.")
+
+    journey = ReferralJourney(
+        JsonStateStore(tmp_path / "state.json"),
+        {FederatedSourceId.MILAN_EHR: FailingSource()},
+    )
+    journey.apply(EnterRoleAction(role=JourneyRole.MILAN))
+    journey.apply(SelectPatientAction(patient_id="CRC-EU-001"))
+
+    snapshot = journey.apply(QuerySourceAction(source_id=FederatedSourceId.MILAN_EHR))
+
+    assert snapshot.source_checks[0].status == "failed"
+    assert snapshot.source_checks[0].error == "EHR unavailable for CRC-EU-001."
+    assert snapshot.stages[1].status == "current"
+    assert snapshot.activity[-1].kind == "source_query_failed"
 
 
 def test_legacy_state_without_journey_fields_loads_with_safe_defaults(

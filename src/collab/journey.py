@@ -1,19 +1,25 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+from typing import Literal
 from uuid import uuid4
 
+from collab.federation import FederatedPatientSource, FederatedSourceError
 from collab.models import (
     DemoState,
     EnterRoleAction,
+    FederatedSourceId,
     JourneyActivity,
     JourneyPatientView,
     JourneyRole,
     JourneyRoleView,
     JourneyStageId,
     JourneyStageView,
+    QuerySourceAction,
     ReferralJourneyAction,
     ReferralJourneySnapshot,
     SelectPatientAction,
+    SourceCheckResult,
     utc_now,
 )
 from collab.persistence import StateStore
@@ -24,8 +30,13 @@ class ReferralJourneyError(ValueError):
 
 
 class ReferralJourney:
-    def __init__(self, store: StateStore) -> None:
+    def __init__(
+        self,
+        store: StateStore,
+        sources: Mapping[FederatedSourceId, FederatedPatientSource] | None = None,
+    ) -> None:
         self._store = store
+        self._sources = dict(sources or {})
 
     def snapshot(self) -> ReferralJourneySnapshot:
         return self._snapshot(self._store.load())
@@ -37,6 +48,8 @@ class ReferralJourney:
                 next_state = self._enter_role(state, action)
             elif isinstance(action, SelectPatientAction):
                 next_state = self._select_patient(state, action)
+            elif isinstance(action, QuerySourceAction):
+                next_state = self._query_source(state, action)
             else:
                 raise ReferralJourneyError("Unsupported referral journey action.")
             self._store.save(next_state)
@@ -73,6 +86,64 @@ class ReferralJourney:
             }
         )
         return state.model_copy(update={"referral_journey": journey})
+
+    def _query_source(self, state: DemoState, action: QuerySourceAction) -> DemoState:
+        journey = state.referral_journey
+        if journey.active_role != JourneyRole.MILAN or journey.selected_patient_id is None:
+            raise ReferralJourneyError("Select the referral patient in the Milan workspace first.")
+        source = self._sources.get(action.source_id)
+        if source is None:
+            raise ReferralJourneyError(f"The {action.source_id.value} source is not configured.")
+        existing = journey.source_checks.get(action.source_id)
+        if existing is not None and existing.status == "complete":
+            return state
+        try:
+            result = source.query(journey.selected_patient_id)
+            event_kind: Literal["source_queried", "source_query_failed"] = "source_queried"
+            title = f"Queried {result.source_label}"
+            available_count = sum(record.status == "available" for record in result.records)
+            detail = (
+                f"{available_count} of {len(result.records)} expected records are available. "
+                "Missing evidence remains visible."
+            )
+        except FederatedSourceError as error:
+            result = SourceCheckResult(
+                source_id=action.source_id,
+                source_label=source.source_label,
+                endpoint=source.endpoint,
+                patient_id=journey.selected_patient_id,
+                status="failed",
+                records=[],
+                checked_at=utc_now(),
+                error=str(error),
+            )
+            event_kind = "source_query_failed"
+            title = f"Could not query {source.source_label}"
+            detail = str(error)
+        checks = {**journey.source_checks, action.source_id: result}
+        next_journey = journey.model_copy(
+            update={
+                "source_checks": checks,
+                "current_stage": (
+                    JourneyStageId.REFERRAL
+                    if self._source_checks_complete(checks)
+                    else JourneyStageId.LOCAL_DATA
+                ),
+                "activity": [
+                    *journey.activity,
+                    JourneyActivity(
+                        id=f"ACT-{uuid4().hex[:10].upper()}",
+                        kind=event_kind,
+                        actor="European Oncology Exchange",
+                        institution="Istituto Nazionale dei Tumori, Milan",
+                        title=title,
+                        detail=detail,
+                        occurred_at=utc_now(),
+                    ),
+                ],
+            }
+        )
+        return state.model_copy(update={"referral_journey": next_journey})
 
     def _select_patient(
         self,
@@ -153,6 +224,11 @@ class ReferralJourney:
             patients=self._patients(),
             stages=self._stages(state),
             activity=state.referral_journey.activity,
+            source_checks=[
+                state.referral_journey.source_checks[source_id]
+                for source_id in FederatedSourceId
+                if source_id in state.referral_journey.source_checks
+            ],
         )
 
     def _stages(self, state: DemoState) -> list[JourneyStageView]:
@@ -212,6 +288,15 @@ class ReferralJourney:
         if state.current_referral is not None:
             return JourneyStageId.REFERRAL
         return state.referral_journey.current_stage
+
+    def _source_checks_complete(
+        self,
+        checks: Mapping[FederatedSourceId, SourceCheckResult],
+    ) -> bool:
+        return all(
+            source_id in checks and checks[source_id].status == "complete"
+            for source_id in FederatedSourceId
+        )
 
     def _patients(self) -> list[JourneyPatientView]:
         return [

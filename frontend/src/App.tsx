@@ -54,12 +54,34 @@ interface JourneyStage {
 
 interface JourneyActivity {
   id: string
-  kind: 'workspace_opened' | 'patient_selected'
+  kind:
+    | 'workspace_opened'
+    | 'patient_selected'
+    | 'source_queried'
+    | 'source_query_failed'
   actor: string
   institution: string
   title: string
   detail: string
   occurred_at: string
+}
+
+type FederatedSourceId = 'milan_ehr' | 'milan_documents' | 'milan_pacs'
+
+interface SourceCheck {
+  source_id: FederatedSourceId
+  source_label: string
+  endpoint: string
+  patient_id: string
+  status: 'complete' | 'failed'
+  records: {
+    id: string
+    label: string
+    status: 'available' | 'missing'
+    detail: string
+  }[]
+  checked_at: string
+  error: string | null
 }
 
 interface JourneySnapshot {
@@ -69,6 +91,7 @@ interface JourneySnapshot {
   patients: JourneyPatient[]
   stages: JourneyStage[]
   activity: JourneyActivity[]
+  source_checks: SourceCheck[]
 }
 
 type Screen = 'role' | 'patients' | 'selected'
@@ -137,7 +160,41 @@ function App() {
 
   async function selectPatient(patientId: string) {
     const updated = await applyAction({ type: 'select_patient', patient_id: patientId })
-    if (updated) setScreen('selected')
+    if (!updated) return
+    setScreen('selected')
+    await runSourceChecks(updated)
+  }
+
+  async function runSourceChecks(current: JourneySnapshot) {
+    setBusy(true)
+    setError(null)
+    let latest = current
+    for (const sourceId of [
+      'milan_ehr',
+      'milan_documents',
+      'milan_pacs',
+    ] as FederatedSourceId[]) {
+      if (
+        latest.source_checks.some(
+          (check) => check.source_id === sourceId && check.status === 'complete',
+        )
+      ) {
+        continue
+      }
+      try {
+        latest = await requestJson<JourneySnapshot>('/api/journey/actions', {
+          method: 'POST',
+          body: JSON.stringify({ type: 'query_source', source_id: sourceId }),
+        })
+        setSnapshot(latest)
+      } catch (reason) {
+        setError(
+          reason instanceof Error ? reason.message : 'A Milan source could not be queried.',
+        )
+        break
+      }
+    }
+    setBusy(false)
   }
 
   async function resetDemo() {
@@ -257,7 +314,12 @@ function App() {
               />
             )}
             {screen === 'selected' && selectedPatient && (
-              <SelectedPatient patient={selectedPatient} />
+              <SelectedPatient
+                patient={selectedPatient}
+                sourceChecks={snapshot.source_checks}
+                busy={busy}
+                onRetry={() => void runSourceChecks(snapshot)}
+              />
             )}
           </section>
           <ActivityTimeline activity={snapshot.activity} />
@@ -405,42 +467,126 @@ function PatientWorklist({
   )
 }
 
-function SelectedPatient({ patient }: { patient: JourneyPatient }) {
+const sourceDefinitions: {
+  id: FederatedSourceId
+  label: string
+  shortEndpoint: string
+}[] = [
+  {
+    id: 'milan_ehr',
+    label: 'Milan electronic health record',
+    shortEndpoint: 'source=milan_ehr',
+  },
+  {
+    id: 'milan_documents',
+    label: 'Milan document repository',
+    shortEndpoint: 'source=milan_documents',
+  },
+  {
+    id: 'milan_pacs',
+    label: 'Milan imaging archive',
+    shortEndpoint: 'source=milan_pacs',
+  },
+]
+
+function SelectedPatient({
+  patient,
+  sourceChecks,
+  busy,
+  onRetry,
+}: {
+  patient: JourneyPatient
+  sourceChecks: SourceCheck[]
+  busy: boolean
+  onRetry: () => void
+}) {
+  const checksComplete =
+    sourceChecks.length === sourceDefinitions.length &&
+    sourceChecks.every((check) => check.status === 'complete')
+  const checkFailed = sourceChecks.some((check) => check.status === 'failed')
   return (
-    <section className="selected-patient screen-stage">
+    <section className="selected-patient data-check-stage screen-stage">
       <div className="section-heading">
         <div>
           <p className="eyebrow">
             {patient.display_name} · {patient.case_id}
           </p>
-          <h1>Patient selected for referral preparation</h1>
+          <h1>Check available data in Milan</h1>
         </div>
-        <p>The next increment adds the federated checks of Milan hospital systems.</p>
+        <p>
+          The platform calls each hospital-owned source separately. Results show what can support
+          the referral and what remains missing.
+        </p>
       </div>
-      <article className="selected-patient-summary">
-        <span className="patient-avatar" aria-hidden="true">
-          {patient.display_name
-            .split(' ')
-            .map((part) => part[0])
-            .join('')}
-        </span>
-        <div>
-          <h2>{patient.display_name}</h2>
-          <p>{patient.diagnosis}</p>
-          <strong>{patient.current_plan}</strong>
+      <div className="federated-check-layout">
+        <article className="selected-patient-summary">
+          <span className="patient-avatar" aria-hidden="true">
+            {patient.display_name
+              .split(' ')
+              .map((part) => part[0])
+              .join('')}
+          </span>
+          <div>
+            <h2>{patient.display_name}</h2>
+            <p>{patient.diagnosis}</p>
+            <strong>{patient.current_plan}</strong>
+          </div>
+        </article>
+        <div className="source-check-list" aria-live="polite">
+          {sourceDefinitions.map((source) => {
+            const check = sourceChecks.find((item) => item.source_id === source.id)
+            return (
+              <article
+                className={`source-check ${check?.status ?? (busy ? 'running' : 'queued')}`}
+                key={source.id}
+              >
+                <div className="source-check-heading">
+                  <div>
+                    <small>{source.label}</small>
+                    <code>POST /api/journey/actions · {source.shortEndpoint}</code>
+                  </div>
+                  <strong>
+                    {!check && busy && 'Requesting'}
+                    {!check && !busy && 'Queued'}
+                    {check?.status === 'complete' && '200 OK'}
+                    {check?.status === 'failed' && 'Failed'}
+                  </strong>
+                </div>
+                {check?.records.map((record) => (
+                  <div className={`source-record-status ${record.status}`} key={record.id}>
+                    {record.status === 'available' ? (
+                      <Check size={16} />
+                    ) : (
+                      <CircleAlert size={16} />
+                    )}
+                    <span>
+                      <strong>{record.label}</strong>
+                      <small>{record.detail}</small>
+                    </span>
+                    <em>{record.status === 'available' ? 'Available' : 'Missing'}</em>
+                  </div>
+                ))}
+                {check?.error && <p className="field-error">{check.error}</p>}
+              </article>
+            )
+          })}
         </div>
-        <span className="stage-ready">
-          <Check size={17} />
-          Ready for local data check
-        </span>
-      </article>
-      <div className="next-increment-note" role="status">
-        <ShieldCheck size={18} />
-        <span>
-          <strong>Journey foundation complete</strong>
-          Federated Milan source checks are the next implementation increment.
-        </span>
       </div>
+      {checksComplete && (
+        <div className="next-increment-note" role="status">
+          <ShieldCheck size={18} />
+          <span>
+            <strong>Local data check complete</strong>
+            Available and missing evidence will remain visible when the referral package is
+            prepared.
+          </span>
+        </div>
+      )}
+      {checkFailed && (
+        <button className="secondary-action" type="button" disabled={busy} onClick={onRetry}>
+          Retry failed source
+        </button>
+      )}
     </section>
   )
 }

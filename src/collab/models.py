@@ -41,9 +41,38 @@ class JourneyStageId(StrEnum):
     MDO_OUTCOME = "mdo_outcome"
 
 
+class FederatedSourceId(StrEnum):
+    MILAN_EHR = "milan_ehr"
+    MILAN_DOCUMENTS = "milan_documents"
+    MILAN_PACS = "milan_pacs"
+
+
+class SourceRecordView(BaseModel):
+    id: str
+    label: str
+    status: Literal["available", "missing"]
+    detail: str
+
+
+class SourceCheckResult(BaseModel):
+    source_id: FederatedSourceId
+    source_label: str
+    endpoint: str
+    patient_id: str
+    status: Literal["complete", "failed"]
+    records: list[SourceRecordView]
+    checked_at: datetime
+    error: str | None = None
+
+
 class JourneyActivity(BaseModel):
     id: str
-    kind: Literal["workspace_opened", "patient_selected"]
+    kind: Literal[
+        "workspace_opened",
+        "patient_selected",
+        "source_queried",
+        "source_query_failed",
+    ]
     actor: str
     institution: str
     title: str
@@ -56,6 +85,7 @@ class ReferralJourneyState(BaseModel):
     selected_patient_id: str | None = None
     current_stage: JourneyStageId = JourneyStageId.PATIENT
     activity: list[JourneyActivity] = Field(default_factory=list)
+    source_checks: dict[FederatedSourceId, SourceCheckResult] = Field(default_factory=dict)
 
 
 class JourneyRoleView(BaseModel):
@@ -95,6 +125,7 @@ class ReferralJourneySnapshot(BaseModel):
     patients: list[JourneyPatientView]
     stages: list[JourneyStageView]
     activity: list[JourneyActivity]
+    source_checks: list[SourceCheckResult]
 
 
 class EnterRoleAction(BaseModel):
@@ -107,8 +138,13 @@ class SelectPatientAction(BaseModel):
     patient_id: str = Field(min_length=1)
 
 
+class QuerySourceAction(BaseModel):
+    type: Literal["query_source"] = "query_source"
+    source_id: FederatedSourceId
+
+
 ReferralJourneyAction = Annotated[
-    EnterRoleAction | SelectPatientAction,
+    EnterRoleAction | SelectPatientAction | QuerySourceAction,
     Field(discriminator="type"),
 ]
 
