@@ -248,14 +248,25 @@ try {
     $applicationUrl = "https://$fqdn"
     $ready = $false
     for ($attempt = 1; $attempt -le 30; $attempt++) {
+        $preflightDetail = "not reachable"
         try {
             $preflight = Invoke-RestMethod -Uri "$applicationUrl/api/preflight" -TimeoutSec 20
             if ($preflight.ready) {
                 $ready = $true
                 break
             }
+            $failedChecks = @(
+                $preflight.checks |
+                    Where-Object { $_.required -and $_.status -ne "pass" } |
+                    ForEach-Object { "$($_.id): $($_.detail)" }
+            )
+            $preflightDetail = $failedChecks -join "; "
         }
         catch {
+            $preflightDetail = $_.Exception.Message
+        }
+        if ($attempt -lt 30) {
+            Write-Host "Preflight attempt $attempt not ready: $preflightDetail"
             Start-Sleep -Seconds 10
         }
     }
