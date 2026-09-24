@@ -9,7 +9,8 @@ RUN npm run build
 FROM python:3.13-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    FRONTEND_DIST=/app/frontend/dist
 
 WORKDIR /app
 RUN useradd --create-home --uid 10001 appuser

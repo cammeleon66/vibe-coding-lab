@@ -100,6 +100,14 @@ def create_app(
     event_grid_webhook_secret: str | None = None,
 ) -> FastAPI:
     repository_root = Path(__file__).resolve().parents[2]
+    configured_frontend_dist = frontend_dist
+    if configured_frontend_dist is None:
+        configured_frontend_path = os.getenv("FRONTEND_DIST")
+        configured_frontend_dist = (
+            Path(configured_frontend_path)
+            if configured_frontend_path
+            else repository_root / "frontend" / "dist"
+        )
     configured_fixture_root = fixture_root or Path(__file__).parent / "fixtures"
     configured_runtime_mode = runtime_mode or os.getenv("APP_RUNTIME_MODE") or "local"
     reported_runtime_mode = (
@@ -319,7 +327,7 @@ def create_app(
                     ),
                 )
             )
-        frontend_index = (frontend_dist or repository_root / "frontend" / "dist") / "index.html"
+        frontend_index = configured_frontend_dist / "index.html"
         checks.extend(
             [
                 PreflightCheck(
@@ -871,7 +879,7 @@ def create_app(
         research_sessions.clear()
         response.delete_cookie("research_demo_session", samesite="strict")
 
-    frontend_dist_path = frontend_dist or repository_root / "frontend" / "dist"
+    frontend_dist_path = configured_frontend_dist
     assets_path = frontend_dist_path / "assets"
     if assets_path.exists():
         application.mount("/assets", StaticFiles(directory=assets_path), name="assets")

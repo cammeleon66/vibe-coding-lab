@@ -1,8 +1,10 @@
 from pathlib import Path
 from shutil import copytree
 
+import pytest
 from fastapi.testclient import TestClient
 
+import collab.app as app_module
 from collab.app import create_app
 
 
@@ -108,6 +110,26 @@ def test_preflight_fails_when_presenter_build_is_missing(tmp_path: Path) -> None
     assert report["ready"] is False
     checks = {item["id"]: item for item in report["checks"]}
     assert checks["frontend-build"]["status"] == "fail"
+
+
+def test_preflight_uses_configured_packaged_frontend(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    frontend_dist = tmp_path / "packaged-frontend"
+    frontend_dist.mkdir()
+    (frontend_dist / "index.html").write_text("<!doctype html>", encoding="utf-8")
+    monkeypatch.setenv("FRONTEND_DIST", str(frontend_dist))
+    installed_module = tmp_path / "site-packages" / "collab" / "app.py"
+    monkeypatch.setattr(app_module, "__file__", str(installed_module))
+    fixture_root = Path(__file__).parents[1] / "src" / "collab" / "fixtures"
+
+    with TestClient(
+        create_app(tmp_path / "state.json", fixture_root=fixture_root)
+    ) as client:
+        report = client.get("/api/preflight").json()
+
+    checks = {item["id"]: item for item in report["checks"]}
+    assert checks["frontend-build"]["status"] == "pass"
 
 
 def test_preflight_fails_when_a_fixture_cannot_be_parsed(tmp_path: Path) -> None:
