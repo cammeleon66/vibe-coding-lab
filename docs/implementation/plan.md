@@ -8,6 +8,72 @@ services or trust-boundary changes.
 
 ## Closed-loop redesign plan
 
+### ADR-016: Backend-owned storyline with a clinical EHR-style scene renderer
+
+**Status:** Approved by the product owner (@cammeleon66) on 2026-09-24.
+Scope: the backend-owned 14-scene storyline and EHR-style scene renderer as
+implemented on branch `redesign/storyline-screens` (PR #15), including merge
+to `master` and redeployment to the existing Azure Container App baseline
+(approved 2026-09-24: "go now until we are live"). No new Azure services.
+Re-approval is needed if the storyline becomes non-linear or changes trust
+boundaries.
+**Date:** 2026-09-24
+
+**Context:** The previous single-page frontend decided screen order and
+gating itself (≈2,000 lines in `App.tsx`), mixed several steps per screen, and
+duplicated backend rules. Presenters found it hard to know which button to
+press next, and role switches were implicit.
+
+**Decision:** The backend owns a fixed 14-scene storyline in three chapters
+(Utrecht, European network, Milan to Utrecht). `GET /api/journey` returns the
+current scene, actor, handover, `can_advance`, `blocked_reason`, and
+`advance_label`; the only way forward is the typed `advance_scene` action with
+`from_scene` (a repeated advance from an earlier scene is a no-op; advancing
+from a scene not yet open, or while blocked, is rejected). The frontend is a
+scene renderer (`StoryShell` + `scenes/registry.ts`) in a neutral clinical EHR
+layout: patient banner, workflow rail, one work area, assistant pane, bottom
+advance toolbar, and an audit-log drawer.
+
+**Options considered:**
+
+1. Keep frontend-owned flow with more guards — rejected: rules stay
+   duplicated and restore/reload stays fragile.
+2. Backend storyline, frontend renderer — chosen.
+3. Route-per-step frontend router — rejected: adds URL state that can
+   disagree with persisted backend state.
+
+**Consequences:** One source of truth for order and gating; reload restores
+the exact scene; frontend tests can use captured backend snapshots. The
+storyline is fixed and linear by design; branching would need a new decision.
+This is a **breaking change** to `/api/journey` and `/api/journey/actions`:
+the `enter_role`, `open_scale_reveal` and `open_international_referral`
+actions, the snapshot fields `roles`, `stages` and `next_role`, and the state
+fields `current_stage`, `regional_exchange.phase` and `regional_exchange.stage`
+were removed (`scripts/verify_azure_rehearsal.py` was updated accordingly).
+No change to trust boundaries, data handling, identity, Azure services, or
+cost.
+
+**Reversibility:** Moderate. Rolling back means reverting backend and frontend
+together (redeploying the previous image) and selecting **Reset**, because
+state persisted under the new schema has no phase/stage fields and would load
+on the old code at the default regional phase.
+
+#### INC-016: Storyline screens
+
+**Status:** Complete on branch; not merged or deployed.
+
+**Validation evidence:**
+
+- 58 backend tests, Ruff, and mypy pass.
+- 20 Vitest tests render every scene from real per-scene backend snapshots
+  and cover advance, read-only review, locked future steps, error, and reset.
+- Six desktop/mobile Playwright checks pass with axe (no serious/critical
+  findings). Fixed a mobile defect where the collapsed workflow strip hid step
+  titles with `display: none`, leaving the step buttons without accessible
+  names.
+- Fresh storyline screenshots in `docs/demo/evidence/`; outdated captures
+  removed. Live verification is pending approval to deploy.
+
 ### Local-to-European storyline extension
 
 #### INC-015: Regional proof and European scale reveal

@@ -73,26 +73,33 @@ def verify(base_url: str, access_code: str | None = None) -> None:
     def action(payload: dict[str, object]) -> Any:
         return call("/api/journey/actions", method="POST", payload=payload)
 
+    def advance(scene: str) -> Any:
+        return action({"type": "advance_scene", "from_scene": scene})
+
+    advance("local_problem")
     for source_id in ("utrecht_patient_summary", "utrecht_imaging"):
         regional = action({"type": "query_regional_source", "source_id": source_id})
     if len(regional["regional_exchange"]["source_checks"]) != 2:
         raise RuntimeError("The regional hospital source checks did not complete.")
+    advance("local_search")
     regional = action({"type": "approve_regional_exchange"})
     if not regional["regional_exchange"]["sharing_approved"]:
         raise RuntimeError("The regional sharing approval was not persisted.")
-    scale = action({"type": "open_scale_reveal"})
-    if scale["regional_exchange"]["phase"] != "scale_reveal":
+    advance("local_approval")
+    scale = advance("local_result")
+    if scale["storyline"]["current_scene"] != "scale_network":
         raise RuntimeError("The European scale reveal did not open.")
-    international = action({"type": "open_international_referral"})
-    if international["regional_exchange"]["phase"] != "international_referral":
-        raise RuntimeError("The international referral did not open after the scale reveal.")
+    international = advance("scale_network")
+    if international["active_role"] != "milan":
+        raise RuntimeError("The international referral did not open in the Milan workspace.")
 
-    action({"type": "enter_role", "role": "milan"})
     action({"type": "select_patient", "patient_id": "CRC-EU-001"})
+    advance("cross_patient")
     for source_id in ("milan_ehr", "milan_documents", "milan_pacs"):
         source_snapshot = action({"type": "query_source", "source_id": source_id})
-    if source_snapshot["stages"][2]["status"] != "current":
+    if not source_snapshot["storyline"]["can_advance"]:
         raise RuntimeError("Federated Milan source checks did not unlock referral preparation.")
+    advance("cross_sources")
 
     action(
         {
@@ -100,6 +107,7 @@ def verify(base_url: str, access_code: str | None = None) -> None:
             "question": ("Please assess response to conversion therapy and liver resectability."),
         }
     )
+    advance("cross_question")
     matches = action({"type": "query_expert_directory"})
     if matches["destinations"][0]["centre_id"] != "utrecht-crc":
         raise RuntimeError("Utrecht was not the highest explainable destination match.")
@@ -110,6 +118,7 @@ def verify(base_url: str, access_code: str | None = None) -> None:
             "clinician_id": "eva-van-dijk",
         }
     )
+    advance("cross_destination")
     action({"type": "query_requirements"})
     prepared = action({"type": "prepare_referral_package"})
     if prepared["package"]["case_version"] != 1:
@@ -124,10 +133,10 @@ def verify(base_url: str, access_code: str | None = None) -> None:
             ),
         }
     )
-    if not sent["package"]["approved"] or sent["next_role"] != "utrecht":
+    handover = advance("cross_package")
+    if not sent["package"]["approved"] or handover["active_role"] != "utrecht":
         raise RuntimeError("Milan approval did not release case version 1 to Utrecht.")
 
-    action({"type": "enter_role", "role": "utrecht"})
     action({"type": "acknowledge_case_version", "case_version": 1})
     action(
         {
@@ -151,9 +160,9 @@ def verify(base_url: str, access_code: str | None = None) -> None:
             ),
         }
     )
-    if requested["next_role"] != "milan":
+    returned_to_milan = advance("utrecht_review")
+    if requested["evidence_request"] is None or returned_to_milan["active_role"] != "milan":
         raise RuntimeError("The Utrecht imaging request did not return responsibility to Milan.")
-    action({"type": "enter_role", "role": "milan"})
 
     arrival = call(
         "/api/evidence-arrivals",
@@ -174,7 +183,7 @@ def verify(base_url: str, access_code: str | None = None) -> None:
     approved = action({"type": "approve_evidence_update", "case_version": 2})
     if approved["update_approved_versions"] != [2]:
         raise RuntimeError("Milan did not approve the version 2 sharing update.")
-    action({"type": "enter_role", "role": "utrecht"})
+    advance("milan_update")
     action({"type": "acknowledge_case_version", "case_version": 2})
     action(
         {
@@ -198,7 +207,7 @@ def verify(base_url: str, access_code: str | None = None) -> None:
     )
     if accepted["mdo_outcome"]["case_version"] != 2:
         raise RuntimeError("Utrecht MDO acceptance did not reference case version 2.")
-    action({"type": "enter_role", "role": "milan"})
+    advance("utrecht_mdo")
     returned = call("/api/journey")
     restored = call("/api/journey")
     if returned["mdo_outcome"] != restored["mdo_outcome"]:
@@ -211,7 +220,7 @@ def verify(base_url: str, access_code: str | None = None) -> None:
     if (
         clean["active_role"] is not None
         or clean["activity"]
-        or clean["regional_exchange"]["phase"] != "regional_exchange"
+        or clean["storyline"]["current_scene"] != "local_problem"
     ):
         raise RuntimeError("Azure rehearsal reset did not restore a clean state.")
 

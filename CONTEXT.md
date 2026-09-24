@@ -30,6 +30,30 @@ hospitals, a national network, or an international network. Scale does not
 change source ownership or clinician responsibility.
 _Avoid_: Product tier, deployment size
 
+## Storyline
+
+**Storyline**:
+The fixed, backend-owned sequence of 14 scenes grouped into three chapters:
+two hospitals in Utrecht (steps 1–4), the European network (step 5), and Milan
+to Utrecht (steps 6–14). The backend decides the current scene, whether it may
+advance, and the label of the advance button; the frontend only renders it.
+_Avoid_: Wizard, flow, tab
+
+**Scene**:
+One screen of the storyline with one responsible actor, one clinical purpose,
+and one advance action. Completed scenes can be reopened read-only.
+_Avoid_: Page, phase
+
+**Handover**:
+The visible transfer of responsibility when consecutive scenes have different
+actors, stating who handed over and what was carried.
+_Avoid_: Role switch, login as
+
+**Audit log**:
+The drawer listing every hospital-system request made by the exchange agent,
+with the owning system and endpoint.
+_Avoid_: Debug console, API panel
+
 ## Referral and evidence
 
 **Federated data check**:

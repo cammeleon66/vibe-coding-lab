@@ -77,7 +77,7 @@ def local_milan_sources(fixture_root: Path) -> dict[FederatedSourceId, Federated
         FederatedSourceId.MILAN_EHR: LocalMilanSource(
             source_id=FederatedSourceId.MILAN_EHR,
             source_label="Milan electronic health record",
-            endpoint="/api/journey/actions · source=milan_ehr",
+            endpoint="GET /milan/ehr/fhir/Patient/CRC-EU-001/$summary",
             fixture_root=fixture_root,
             records=[
                 (
@@ -97,7 +97,7 @@ def local_milan_sources(fixture_root: Path) -> dict[FederatedSourceId, Federated
         FederatedSourceId.MILAN_DOCUMENTS: LocalMilanSource(
             source_id=FederatedSourceId.MILAN_DOCUMENTS,
             source_label="Milan document repository",
-            endpoint="/api/journey/actions · source=milan_documents",
+            endpoint="GET /milan/documents/DocumentReference?patient=CRC-EU-001",
             fixture_root=fixture_root,
             records=[
                 (
@@ -117,7 +117,7 @@ def local_milan_sources(fixture_root: Path) -> dict[FederatedSourceId, Federated
         FederatedSourceId.MILAN_PACS: LocalMilanSource(
             source_id=FederatedSourceId.MILAN_PACS,
             source_label="Milan imaging archive",
-            endpoint="/api/journey/actions · source=milan_pacs",
+            endpoint="GET /milan/pacs/dicom/studies?patient=CRC-EU-001",
             fixture_root=fixture_root,
             records=[
                 (
