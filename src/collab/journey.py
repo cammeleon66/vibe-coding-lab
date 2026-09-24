@@ -343,10 +343,7 @@ class ReferralJourney:
                     self._utrecht_activity(
                         "evidence_requested",
                         "Requested missing imaging from Milan",
-                        (
-                            f"{', '.join(requested)}. "
-                            f"Clinical reason: {request.clinical_reason}"
-                        ),
+                        (f"{', '.join(requested)}. Clinical reason: {request.clinical_reason}"),
                     ),
                 ],
             }
@@ -574,8 +571,7 @@ class ReferralJourney:
             (
                 item
                 for item in state.referral_journey.destinations
-                if item.centre_id == action.centre_id
-                and item.clinician_id == action.clinician_id
+                if item.centre_id == action.centre_id and item.clinician_id == action.clinician_id
             ),
             None,
         )

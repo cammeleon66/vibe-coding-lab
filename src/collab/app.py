@@ -163,8 +163,8 @@ def _demo_access_page() -> str:
 <body>
   <main>
     <div class="eyebrow">Synthetic clinical demonstration</div>
-    <h1>Collaborate across borders.</h1>
-    <p>Enter the shared demo code to open the European oncology collaboration workspace.</p>
+    <h1>Open the referral demonstration</h1>
+    <p>Enter the shared demo code to review the synthetic Milan-to-Utrecht referral.</p>
     <form id="access-form">
       <label for="code">Demo access code</label>
       <input

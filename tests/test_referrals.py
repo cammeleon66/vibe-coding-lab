@@ -123,9 +123,7 @@ def test_preflight_uses_configured_packaged_frontend(
     monkeypatch.setattr(app_module, "__file__", str(installed_module))
     fixture_root = Path(__file__).parents[1] / "src" / "collab" / "fixtures"
 
-    with TestClient(
-        create_app(tmp_path / "state.json", fixture_root=fixture_root)
-    ) as client:
+    with TestClient(create_app(tmp_path / "state.json", fixture_root=fixture_root)) as client:
         report = client.get("/api/preflight").json()
 
     checks = {item["id"]: item for item in report["checks"]}
@@ -151,9 +149,7 @@ def test_shared_demo_code_protects_ui_and_api(tmp_path: Path) -> None:
         health = client.get("/api/health")
         event_grid = client.post("/api/event-grid/evidence-arrivals", json=[])
         wrong_code = client.post("/api/demo-access", json={"code": "wrong"})
-        accepted = client.post(
-            "/api/demo-access", json={"code": "shared-demo-code"}
-        )
+        accepted = client.post("/api/demo-access", json={"code": "shared-demo-code"})
         unlocked_page = client.get("/")
 
     assert protected_page.status_code == 307

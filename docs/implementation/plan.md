@@ -341,6 +341,8 @@ final specialist opinion, accepts it into MDO, and Milan receives the result.
 
 #### INC-013: Demonstration quality and plain-language review
 
+**Status:** Complete
+
 **Depends on:** INC-012.
 
 **Outcome:** The full journey is clear, accessible, visually reviewed, and
@@ -366,6 +368,24 @@ presentable in about five minutes.
 - Axe, keyboard, desktop, mobile, visual, Vitest, backend, lint, type, and build
   checks pass.
 - The rehearsed path completes in approximately five minutes.
+
+**Validation evidence:**
+
+- The primary interface contains only the clinical referral journey; research
+  and presenter preflight remain backend compatibility routes and are not shown
+  to clinicians.
+- Headings, actions, helper text, failures, and the access-code page use direct
+  clinical language without AI, transformation, or marketing claims.
+- Screen changes move keyboard focus to the new heading; the scrollable activity
+  timeline is keyboard focusable; locked stages state their exact prerequisite.
+- The presenter guide now rehearses the complete Milan-to-Utrecht-to-Milan path
+  in seven timed beats over approximately five minutes.
+- Desktop and mobile closed-loop screenshots are stored under
+  `docs/demo/evidence/closed-loop-*.png`.
+- The complete 57-test backend suite, strict mypy, Ruff format/lint, five Vitest
+  tests, frontend lint/build, npm audit, and four desktop/mobile Playwright
+  checks pass. Full-journey and opening-screen axe scans report no serious or
+  critical findings.
 
 #### INC-014: Azure deployment and live rehearsal
 

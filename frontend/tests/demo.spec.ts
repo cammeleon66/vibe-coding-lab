@@ -22,7 +22,8 @@ test.beforeEach(async ({ page }) => {
   await reset(page)
 })
 
-test('prepares and approves the Milan referral package', async ({ page }) => {
+test('completes the closed-loop referral journey', async ({ page }, testInfo) => {
+  const startedAt = Date.now()
   await page.goto('/')
 
   await expect(page.getByRole('heading', { name: 'Choose a clinical workspace' })).toBeVisible()
@@ -114,6 +115,12 @@ test('prepares and approves the Milan referral package', async ({ page }) => {
       .getByRole('listitem')
       .filter({ hasText: 'MDO outcome' }),
   ).toHaveAttribute('aria-current', 'step')
+  await expectNoSeriousAccessibilityViolations(page)
+  expect(Date.now() - startedAt).toBeLessThan(120_000)
+  await page.screenshot({
+    path: `../docs/demo/evidence/closed-loop-${testInfo.project.name}.png`,
+    fullPage: true,
+  })
 
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Utrecht outcome received' })).toBeVisible()
@@ -132,5 +139,6 @@ test('supports keyboard navigation and has no serious accessibility violations',
 
   await expectNoSeriousAccessibilityViolations(page)
   await page.getByRole('button', { name: 'Open Milan workspace' }).click()
+  await expect(page.getByRole('heading', { name: 'Active patients' })).toBeFocused()
   await expectNoSeriousAccessibilityViolations(page)
 })

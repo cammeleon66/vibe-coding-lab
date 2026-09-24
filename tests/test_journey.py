@@ -328,9 +328,7 @@ def test_milan_approves_source_linked_package_before_utrecht_can_enter(
 
     restored = ReferralJourney(
         JsonStateStore(state_path),
-        local_milan_sources(
-            Path(__file__).parents[1] / "src" / "collab" / "fixtures" / "milan"
-        ),
+        local_milan_sources(Path(__file__).parents[1] / "src" / "collab" / "fixtures" / "milan"),
     ).snapshot()
 
     assert premature.status_code == 409

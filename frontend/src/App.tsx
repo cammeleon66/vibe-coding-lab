@@ -11,7 +11,7 @@ import {
   UserRound,
   Users,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import './App.css'
 
 type JourneyRole = 'milan' | 'utrecht'
@@ -203,6 +203,7 @@ function App() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const screenRef = useRef<HTMLElement>(null)
 
   useEffect(() => {
     requestJson<JourneySnapshot>('/api/journey')
@@ -228,6 +229,13 @@ function App() {
         setError(reason instanceof Error ? reason.message : 'Could not restore the journey.')
       })
   }, [])
+
+  useEffect(() => {
+    const heading = screenRef.current?.querySelector<HTMLElement>('h1')
+    if (!heading) return
+    heading.tabIndex = -1
+    heading.focus()
+  }, [screen, snapshot?.active_role, snapshot?.selected_patient_id])
 
   async function applyAction(action: object) {
     setBusy(true)
@@ -408,7 +416,7 @@ function App() {
                   else if (stage.id === 'mdo_outcome') {
                     setScreen(snapshot.mdo_outcome ? 'outcome' : 'mdo')
                   }
-                  else setNotice(`${stage.label} is implemented in a later increment.`)
+                  else setNotice(`${stage.label} is not available for the current case state.`)
                 }}
               >
                 <span>{String(index + 1).padStart(2, '0')}</span>
@@ -440,7 +448,7 @@ function App() {
         </section>
       ) : (
         <div className="journey-layout">
-          <section className="journey-screen">
+          <section className="journey-screen" ref={screenRef}>
             {screen === 'role' && (
               <RolePicker roles={snapshot.roles} busy={busy} onEnter={enterRole} />
             )}
@@ -695,7 +703,7 @@ function SelectedPatient({
           <h1>Check available data in Milan</h1>
         </div>
         <p>
-          The platform calls each hospital-owned source separately. Results show what can support
+          The exchange calls each hospital-owned source separately. Results show what can support
           the referral and what remains missing.
         </p>
       </div>
@@ -1532,7 +1540,7 @@ function MilanOutcome({
 
 function ActivityTimeline({ activity }: { activity: JourneyActivity[] }) {
   return (
-    <aside className="activity-timeline" aria-label="Referral activity">
+    <aside className="activity-timeline" aria-label="Referral activity" tabIndex={0}>
       <div className="timeline-heading">
         <div>
           <p className="eyebrow">Referral activity</p>
@@ -1562,8 +1570,8 @@ function ActivityTimeline({ activity }: { activity: JourneyActivity[] }) {
       <div className="timeline-boundary">
         <Building2 size={17} />
         <p>
-          Hospital-owned source queries and cross-hospital approvals are added in the next
-          increments.
+          This timeline records hospital-owned source queries, clinician approvals, version
+          acknowledgements, and the returned MDO outcome.
         </p>
       </div>
     </aside>
