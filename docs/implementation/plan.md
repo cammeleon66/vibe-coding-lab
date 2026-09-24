@@ -389,6 +389,8 @@ presentable in about five minutes.
 
 #### INC-014: Azure deployment and live rehearsal
 
+**Status:** Complete
+
 **Depends on:** INC-013 and explicit deployment approval.
 
 **Outcome:** The approved redesign runs on the existing private Azure baseline
@@ -411,6 +413,24 @@ and passes the complete live referral rehearsal.
 - The complete role, referral, update, and MDO path passes on desktop and
   mobile.
 - Deployment evidence and rollback image are recorded.
+
+**Validation evidence:**
+
+- ACR image `oncology-collab-demo:7e5a942` is active in Container App revision
+  `oncology-collab-demo--0000008`; the previous stable `6ded4aa` tag remains
+  available for rollback.
+- The existing managed identity, three private Blob endpoints, storage
+  accounts, Container Apps environment, monitoring, budget, expiry, access
+  code, and Event Grid system topic were preserved.
+- The cookie-aware live verifier passed protected access, Azure preflight,
+  three federated source checks, Event Grid delivery, immutable versions 1 and
+  2, all clinician approvals, MDO acceptance, 23 persisted timeline events,
+  refresh restore, and final reset.
+- Four live Playwright checks passed against the protected URL at desktop and
+  Pixel 7 sizes, including the complete closed loop, keyboard focus, and axe
+  accessibility scans.
+- Deployment details, live screenshots, and the exact rollback image and
+  command are recorded in `docs/demo/azure-deployment.md`.
 
 ## Implementation strategy
 

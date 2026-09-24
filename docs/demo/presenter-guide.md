@@ -64,3 +64,5 @@ claim is live.
 | --- | --- |
 | Closed-loop desktop outcome | [`evidence/closed-loop-desktop-chromium.png`](evidence/closed-loop-desktop-chromium.png) |
 | Closed-loop mobile outcome | [`evidence/closed-loop-mobile-chromium.png`](evidence/closed-loop-mobile-chromium.png) |
+| Live Azure desktop outcome | [`evidence/live-closed-loop-desktop-chromium.png`](evidence/live-closed-loop-desktop-chromium.png) |
+| Live Azure mobile outcome | [`evidence/live-closed-loop-mobile-chromium.png`](evidence/live-closed-loop-mobile-chromium.png) |

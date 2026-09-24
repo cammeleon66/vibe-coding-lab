@@ -19,6 +19,13 @@ async function expectNoSeriousAccessibilityViolations(
 }
 
 test.beforeEach(async ({ page }) => {
+  const accessCode = process.env.DEMO_ACCESS_CODE
+  if (accessCode) {
+    await page.goto('/')
+    await page.getByLabel('Demo access code').fill(accessCode)
+    await page.getByRole('button', { name: 'Open workspace' }).click()
+    await expect(page).not.toHaveURL(/\/demo-access/)
+  }
   await reset(page)
 })
 
@@ -117,8 +124,9 @@ test('completes the closed-loop referral journey', async ({ page }, testInfo) =>
   ).toHaveAttribute('aria-current', 'step')
   await expectNoSeriousAccessibilityViolations(page)
   expect(Date.now() - startedAt).toBeLessThan(120_000)
+  const evidencePrefix = process.env.PLAYWRIGHT_BASE_URL ? 'live-closed-loop' : 'closed-loop'
   await page.screenshot({
-    path: `../docs/demo/evidence/closed-loop-${testInfo.project.name}.png`,
+    path: `../docs/demo/evidence/${evidencePrefix}-${testInfo.project.name}.png`,
     fullPage: true,
   })
 
