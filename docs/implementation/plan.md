@@ -489,10 +489,13 @@ The live deployment completed on 2026-09-24:
   filters only Blob-created events in the Milan `events` container;
 - the live rehearsal passed referral, case version 1, Event Grid late evidence,
   case version 2, human review, MDO manifest, and clean reset;
-- Entra presenter authentication is enabled with HTTPS required;
-- browser navigation redirects to Entra, `/api/health` remains anonymously
-  available, and the excluded Event Grid callback still rejects requests
-  without its shared secret;
+- DEC-008 replaced tenant-bound Entra with a shareable access-code page backed
+  by Azure secrets and a signed 12-hour Secure/HttpOnly/SameSite session cookie;
+- browser navigation redirects to the access-code page, protected APIs reject
+  anonymous requests, `/api/health` remains available, and the Event Grid
+  callback still rejects requests without its independent shared secret;
+- Container Apps built-in authentication is disabled and the obsolete Entra
+  application registration was deleted;
 - all three storage accounts keep public network access disabled and all three
   private endpoints are approved.
 
@@ -510,8 +513,10 @@ The exact commands will be established with the application scaffold. At minimum
 ## Next action
 
 INC-006 is complete locally and ready for external clinical-fidelity review.
-That review remains a presentation gate. `INC-007` is deployed and technically
-verified; the remaining closeout is a presenter sign-in check, final structured
-review, GitHub issue/milestone closure, and teardown on 2026-10-07 using
-`scripts/teardown-azure.ps1`. Fabric remains deferred, Azure OpenAI remains
-disabled, and no private MDO backend was integrated.
+That review remains a presentation gate. `INC-007` and the DEC-008 shareable
+access correction are deployed and technically verified. The next product step
+is a presenter/clinical walkthrough, followed by prioritizing observed
+comprehension and fidelity gaps rather than adding infrastructure. Teardown
+remains scheduled for 2026-10-07 using `scripts/teardown-azure.ps1`. Fabric
+remains deferred, Azure OpenAI remains disabled, and no private MDO backend was
+integrated.

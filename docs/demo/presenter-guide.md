@@ -2,13 +2,15 @@
 
 **Target duration:** 90 seconds  
 **Runtime:** deterministic synthetic rehearsal  
-**Boundary:** no Azure or Fabric provisioning, private MDO state, real patient
-data, live directory, or live AI
+**Live URL:** `https://oncology-collab-demo.wittyrock-0461f613.westeurope.azurecontainerapps.io`
+**Boundary:** synthetic Azure demo; no Fabric workspace, private MDO state, real
+patient data, live directory, or live AI
 
 ## Before the audience arrives
 
-1. Build the frontend and start FastAPI as described in `README.md`.
-2. Select **Preflight**. Continue only when all required local checks pass.
+1. Open the live URL and enter the current shared demo access code. Obtain the
+   code from the deployment owner; never add it to the repository or slides.
+2. Select **Preflight**. Continue only when all required checks pass.
 3. Select **Reset**. The green confirmation must say the rehearsal returned to
    a clean synthetic case.
 4. Keep the browser at 100% zoom. Use at least 1280×800; the tested presenter
@@ -47,6 +49,8 @@ claim is live.
 
 - **Preflight failure:** do not begin. Fix the failed required check and run it
   again.
+- **Access-code rejection:** confirm the current code with the deployment
+  owner. Codes can be rotated by redeploying and should not be sent in URLs.
 - **Loading remains visible:** refresh once. If state restore fails, show the
   explicit error rather than describing a successful flow.
 - **Evidence update fails:** point out that the previous valid case version is
@@ -66,4 +70,3 @@ claim is live.
 | Completed clinical path | [`evidence/state-completed.jpg`](evidence/state-completed.jpg) |
 | Desktop responsive acceptance | [`evidence/completed-desktop-chromium.jpg`](evidence/completed-desktop-chromium.jpg) |
 | Mobile responsive acceptance | [`evidence/completed-mobile-chromium.jpg`](evidence/completed-mobile-chromium.jpg) |
-
