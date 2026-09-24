@@ -1,7 +1,10 @@
 # Proposal: federated European oncology network (v0.5)
 
-**Status:** Proposed — awaiting product-owner approval. Does not replace the
-approved brief (v0.4) until approved.
+**Status:** Approved by the product owner (@cammeleon66) on 2026-09-24 ("i
+approve"), with one change: **Autonomous MDO is out of scope** ("autonomous mdo
+is not for this"). Supersedes product brief v0.4. Architecture approval is
+still required before implementation — see
+[`../architecture/federated-network-architecture.md`](../architecture/federated-network-architecture.md).
 **Date:** 2026-09-24
 **Source:** product owner's demo flow (`federated_oncology_demo_flow.md`,
 shared 2026-09-24) and feedback on the live storyline build.
@@ -21,8 +24,8 @@ European oncology network a clinician could use.
 
 - **Core message:** *One patient. Europe's expertise.* **Data stays. Insights
   travel.**
-- **Hierarchy:** Federation → Clinical collaboration → Federated evidence →
-  Autonomous MDO → AI. Federation is the hero; AI is a layer on top.
+- **Hierarchy:** Federation → Clinical collaboration → Federated evidence.
+  Federation is the hero. (Autonomous MDO / AI layer: out of scope.)
 - **Audience outcome:** a clinician can reach the right European expert and
   query relevant European evidence without any hospital surrendering its data;
   the audience sees *what the clinician did → what the platform did → what
@@ -42,10 +45,9 @@ European oncology network a clinician could use.
 | 3:00 | Activity monitor, side by side: authorized → policy check → minimisation 27→9 → identifiers removed → FHIR bundle → routing → delivery → received, one correlation ID. | Control room |
 | 4:00 | Heidelberg environment (`SECURE CLINICAL ENVIRONMENT`), inbox, approved case package, expert opinion. | Heidelberg expert |
 | 5:00 | **Compare with our patients**: cohort query runs locally in Heidelberg; aggregate only. *38 queried locally · 0 transferred.* | Heidelberg expert + control room |
-| 6:00 | Peer review completed with supporting local evidence; received back in NL. | Both |
-| 7:00 | **Run Autonomous MDO** over patient + peer review + federated evidence. | NL oncologist |
-| 8:30 | Optional: **Turn this case into a research question**; European cohort counts per site, no central database. | Researcher view |
-| 10:00 | Closing loop visual. | — |
+| 6:00 | Peer review completed with supporting local evidence; received back in NL: *my patient + European expert opinion + European real-world evidence*. | Both |
+| 7:00 | Optional: **Turn this case into a research question**; European cohort counts per site, no central database. | Researcher view |
+| 9:00 | Closing loop visual. | — |
 | any | "This is actually real": **Disconnect Heidelberg** → *Heidelberg unavailable — federated result incomplete*; reconnect and rerun. | Control room |
 
 ## Proposed decisions (defaults chosen while the product owner was unavailable)
@@ -55,7 +57,7 @@ European oncology network a clinician could use.
 | DEC-017 | Story | Replace Milan→Utrecht with Maria Janssen NL → Heidelberg. Drop the Utrecht opener (the new flow starts with the case). | Keep the Utrecht opener; keep both cases. |
 | DEC-018 | Navigation | Role switcher in the top bar (NL oncologist · Heidelberg expert · Control room · later Researcher). Each role has an inbox/worklist and patient tabs; free clicking. Backend enforces **rules** (nothing crosses unapproved, opinion needs a received case), not **screen order**. A collapsible presenter checklist shows progress but never drives navigation. Supersedes ADR-016's linear storyline. | No checklist at all. |
 | DEC-019 | Infrastructure (first increment) | Three Container Apps in the existing subscription: **NL hospital**, **Heidelberg hospital**, **federation hub**, each with its own storage account and managed identity; hospitals only reachable through the hub; Heidelberg's app can really be stopped for the disconnect test. | Single app simulating separation (no cost change); full two-subscription build with Entra, APIM, FHIR service and PostgreSQL OMOP (high cost/effort, separate approval). |
-| DEC-020 | First-increment scope | Workstation + expert search, governed sharing with minimisation, activity monitor, Heidelberg peer review, local aggregate cohort query, disconnect failure mode. MDO and research cohort follow. | Everything at once. |
+| DEC-020 | First-increment scope | Workstation + expert search, governed sharing with minimisation, activity monitor, Heidelberg peer review, local aggregate cohort query, disconnect failure mode. Research cohort follows. **Autonomous MDO: removed from scope** (product owner, 2026-09-24). | — |
 
 ## Real vs simulated (first increment, DEC-019 default)
 
@@ -85,12 +87,13 @@ API Management, Azure Health Data Services FHIR, PostgreSQL OMOP.
 
 - **Name clash:** the flow uses patient *Maria Janssen* and clinician *Dr Janssen*. Proposed: rename the clinician (e.g. Dr Pieter de Boer) so the monitor never looks like the patient is the requester.
 - **Real institution names** (Heidelberg, Milan, Antwerp, Oxford, UMC) with fictional clinicians and numbers: keep the visible *synthetic* labelling and the existing "no endorsement" wording.
-- **Clinical claims:** response rates and "treatment A/B" must stay generic and marked synthetic; the MDO output must not read as a treatment recommendation. The word "Autonomous" needs clinical review; it conflicts with the brief's "clinicians decide" rule.
-- **Cost:** three Container Apps scaling to zero plus two small storage accounts is expected to add under €20/month (estimate; verify with the Azure pricing calculator before provisioning). Existing budget alert (€35) and expiry tag (2026-10-07) apply.
-- **Deadline unknown:** it decides whether MDO and research ship in the same release.
+- **Clinical claims:** response rates and "treatment A/B" must stay generic and marked synthetic; the peer-review opinion must not read as a platform recommendation.
+- **Cost:** three Container Apps scaling to zero, reusing existing storage accounts and private endpoints; see the cost table in the architecture (≈ €0–5/month at demo traffic). Existing budget alert (€35) and expiry tag (2026-10-07) apply.
+- **Deadline unknown:** it decides whether the research view ships in the same release.
 - **Rework:** the frontend scene renderer and the 14-scene backend storyline are largely replaced; the federated query, approval, audit, Event Grid and deployment pieces are reused.
 
-## Approval requested
+## Approval
 
-Approve or amend DEC-017 to DEC-020, then implementation starts with INC-017
-(see `docs/implementation/plan.md`).
+Approved 2026-09-24 by @cammeleon66: DEC-017 to DEC-020 as listed, Autonomous
+MDO removed. Next gates: architecture approval, then the INC-018 Azure cost
+and identity gate, then the INC-025 cutover.

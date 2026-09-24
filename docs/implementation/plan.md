@@ -8,22 +8,31 @@ services or trust-boundary changes.
 
 ## Closed-loop redesign plan
 
-### Proposed: federated European oncology network (INC-017 to INC-024)
+### Federated European oncology network (INC-017 to INC-026)
 
-**Status:** Proposed — awaiting approval of DEC-017 to DEC-020 in
-[`docs/product/federated-network-proposal.md`](../product/federated-network-proposal.md).
-Nothing below is implemented or approved.
+**Status:** Product direction approved 2026-09-24
+([`federated-network-proposal.md`](../product/federated-network-proposal.md),
+Autonomous MDO removed). Architecture v0.3
+([`federated-network-architecture.md`](../architecture/federated-network-architecture.md),
+ADR-017) awaits approval; nothing below is implemented. Epic: GitHub #17;
+increments #18–#27.
 
-| Increment | Outcome | Depends on | Validation |
-| --- | --- | --- | --- |
-| INC-017 Role-based workspace shell | Role switcher (NL oncologist, Heidelberg expert, Control room); per-role inbox and patient tabs; advance toolbar removed; backend keeps rules, not screen order; optional presenter checklist. Supersedes ADR-016 navigation. | Approval | Vitest per role, Playwright free-navigation walk, axe |
-| INC-018 Maria's case and expert search | Maria Janssen workstation (Overview, Timeline, Pathology, Imaging, Molecular, Treatment, MDO); metadata-only expertise catalogue search; select Heidelberg. | INC-017 | Backend catalogue tests; UI tests |
-| INC-019 Governed sharing and activity monitor | Sharing checklist → policy check → minimisation (27→9) → identifier removal → FHIR-shaped bundle; one correlation ID; control-room monitor with request/response details. | INC-018 | Tests prove unchecked items and identifiers never leave NL |
-| INC-020 Heidelberg peer review | Secure environment banner, inbox, approved package, expert opinion returned to NL. | INC-019 | Round-trip tests; Playwright |
-| INC-021 Local cohort query | "Compare with our patients": signed query → Heidelberg local computation over OMOP-shaped data → aggregate only with small-cell suppression; "38 queried locally · 0 transferred". | INC-020 | Tests that no row-level data leaves Heidelberg |
-| INC-022 Disconnect Heidelberg | Control-room disconnect/reconnect; NL shows incomplete federated result; rerun succeeds. | INC-021 | Failure-path tests, live check after INC-023 |
-| INC-023 Separate hospital deployments | NL, Heidelberg and hub as separate Container Apps with own storage and identity (DEC-019). **Azure cost gate.** | INC-022 + cost approval | Live verifier, live Playwright |
-| INC-024 MDO synthesis and research cohort | MDO synthesis over the platform APIs; research question → per-site cohort counts; closing visual. | INC-023 | Clinical wording review, tests |
+Order follows the architecture review: the three-service split and its
+Azure skeleton come first, so every feature is built across real boundaries.
+The current live app stays up until INC-025.
+
+| Increment | Outcome | Depends on | Gate | Validation |
+| --- | --- | --- | --- | --- |
+| INC-017 (#18) Federation foundation | `SITE` app factory (nl, de, hub); three local processes and separate stores; route namespaces and keys; directional signing with persisted nonces; immutable per-event audit; health with reset generation; dev/test harness starting all three. | Architecture approval | Architecture | Signing/replay/audit unit tests; cross-process contract tests |
+| INC-018 (#19) Azure three-service skeleton | `oncology-fed-hub/nl/de` Container Apps alongside the live app; per-app identities scoped to one container; internal ingress for hospitals; warm-up and connectivity scripts. | INC-017 (#18) | **Cost + identity** | Health across all three live; RBAC matrix verified; hospitals unreachable externally |
+| INC-019 (#20) Role-based workspace shell | Demo-role switcher (NL oncologist, Heidelberg expert, Control room); per-role inbox and patient tabs; no advance toolbar; collapsible presenter checklist; typed BFF. | INC-017 (#18) | — | Vitest per role; Playwright free-navigation walk; axe |
+| INC-020 (#21) Maria's case and expert search | NL record (27 resources) and tabs Overview, Timeline, Pathology, Imaging, Molecular, Treatment, MDO; metadata-only catalogue; select Dr Anna Müller. | INC-019 (#20) | — | Catalogue and record tests; UI tests |
+| INC-021 (#22) Governed sharing and activity monitor | Sharing checklist → allowlist package build (27→9) → policy → signed routing; correlation ID; control room with redacted snapshots and on-demand package from the owning site. | INC-020 (#21) | — | Tests: unchecked categories, identifiers, narrative, contained, attachments and DICOM tags never leave NL |
+| INC-022 (#23) Heidelberg peer review | Secure-environment shell, inbox, received package, opinion returned DE → hub → NL. | INC-021 (#22) | — | Round-trip and idempotency tests; Playwright |
+| INC-023 (#24) Local cohort query | Typed query; local computation over OMOP-shaped rows in DE; aggregates only, k = 5 suppression; "38 queried locally · 0 transferred". | INC-022 (#23) | — | Tests that no row-level data reaches the hub |
+| INC-024 (#25) Disconnect and reset hardening | Presenter runbook disables Heidelberg ingress (local: stop process); live health in control room; incomplete-result message; rerun; reset generations reconcile. | INC-023, INC-018 | — | Failure-path tests; live disconnect/reconnect check |
+| INC-025 (#26) Cutover | Public URL points to the new hub; presenter guide rewritten; old app, legacy identity roles and Event Grid subscription retired; rollback kept. | INC-024 (#25) | **Deployment** | Live verifier; live Playwright desktop/mobile |
+| INC-026 (#27) Research view and closing | "Turn this case into a research question": NL + DE computed aggregates, catalogue-only sites labelled and excluded from totals; closing loop visual. | INC-025 (#26) | — | Aggregate-only tests; clinical wording review |
 
 ### ADR-016: Backend-owned storyline with a clinical EHR-style scene renderer
 

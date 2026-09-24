@@ -1,6 +1,8 @@
 # Product brief: European oncology collaboration foundation
 
-**Status:** Approved
+**Status:** Superseded on 2026-09-24 by
+[`federated-network-proposal.md`](federated-network-proposal.md) (v0.5).
+Kept for the history of the live Milan→Utrecht build.
 **Version:** 0.4
 **Date:** 2026-09-24
 **Approval required before:** Architecture
