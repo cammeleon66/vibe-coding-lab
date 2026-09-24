@@ -1,8 +1,302 @@
 # Implementation plan: European oncology collaboration demo
 
-**Status:** Approved architecture; implementation may proceed locally
-**Date:** 2026-09-23
-**Cloud provisioning:** Approved baseline attempted; blocked on revised private-networking cost
+**Status:** Closed-loop redesign planned; implementation paused until issue sequence is established
+**Date:** 2026-09-24
+**Cloud deployment:** Existing private Azure deployment remains live; no redesign deployment has been approved or attempted
+
+## Closed-loop redesign plan
+
+### Outcome
+
+Deliver a five-minute synthetic referral from Milan to Utrecht that proves:
+
+- hospital-owned data can be used through authorized APIs without first centralizing every source record;
+- the platform can prepare a useful referral package with little manual data chasing;
+- the audience can see what remains in Milan and what crosses to Utrecht;
+- clinicians approve sharing, record clinical judgement, request missing evidence, and accept responsibility;
+- late evidence creates an immutable approved update;
+- the process closes with a Utrecht specialist opinion, MDO acceptance, and a returned next action in Milan.
+
+The approved journey and language are recorded in `docs/product/product-brief.md`
+version 0.3 and `CONTEXT.md`.
+
+### Current worktree rule
+
+The uncommitted redesign code is an implementation spike, not an approved
+increment. It must not be committed or deployed as one large change. After the
+issues below exist, retain only code that belongs to the active issue and either
+replace or remove the rest. Documentation that records the approved product
+direction may remain.
+
+### Architecture correction
+
+The workflow must not be implemented as a set of shallow route handlers whose
+ordering rules are spread across the frontend.
+
+Create one deep **referral journey module** at the collaboration-state seam.
+Its interface is:
+
+```text
+snapshot() -> ReferralJourneySnapshot
+apply(action: ReferralJourneyAction) -> ReferralJourneySnapshot
+```
+
+The module owns:
+
+- allowed action ordering;
+- acting role and institution;
+- immutable case-version rules;
+- Milan sharing approvals;
+- Utrecht acknowledgements;
+- evidence requests;
+- referral assessment and specialist opinion ownership;
+- MDO acceptance;
+- next responsibility;
+- activity-timeline events;
+- idempotency and invalid-transition errors;
+- persistence of the complete collaboration state.
+
+HTTP routes are adapters to this interface. The React application renders the
+returned snapshot and submits typed actions; it does not reproduce transition
+rules.
+
+The existing institution-source seam remains separate because Milan EHR,
+document, PACS, Utrecht requirements, and receiving-system adapters genuinely
+vary. Source queries return evidence availability and append a journey activity
+through the referral journey module.
+
+### Data-sharing model
+
+Use the approved hybrid model:
+
+- Milan and Utrecht source systems remain the source of truth.
+- Structured referral context and provenance enter the approved referral
+  package.
+- Large source files remain in Milan and are represented by authorized
+  retrieval references.
+- The shared collaboration store contains journey state, approved package
+  snapshots, provenance, activities, opinions, and acknowledgements; it does
+  not become a copy of every source record.
+- Every package or update that crosses from Milan to Utrecht requires an
+  explicit Milan approval.
+- Utrecht acknowledges the exact immutable case version under review.
+
+### Screen model
+
+Use six stages with dedicated screens:
+
+1. **Patient** — role picker and Milan active-patient worklist.
+2. **Local data** — split clinical/API view for Milan EHR, document repository,
+   and PACS checks.
+3. **Referral** — clinical question, expert-centre directory, Utrecht
+   requirements, package contents, Milan referral assessment, and send approval.
+4. **Utrecht review** — receiving inbox, version acknowledgement, provisional
+   specialist opinion, and evidence request.
+5. **Evidence update** — requested imaging arrives in Milan, case version 2 is
+   prepared, compared, approved, and sent.
+6. **MDO outcome** — Utrecht acknowledges version 2, finalizes the specialist
+   opinion, accepts the case into MDO, and returns the result to Milan.
+
+Completed and current stages are navigable. Future stages remain visible but
+show the exact prerequisite when selected. The activity timeline remains
+visible beside the clinical screen. Clinical and technical information are
+shown together without marketing-style headings or generic AI language.
+
+### Implementation sequence
+
+| Increment | GitHub issue | Depends on |
+| --- | --- | --- |
+| INC-008 | [#7](https://github.com/cammeleon66/vibe-coding-lab/issues/7) | Approved product brief and DEC-010 |
+| INC-009 | [#8](https://github.com/cammeleon66/vibe-coding-lab/issues/8) | #7 |
+| INC-010 | [#9](https://github.com/cammeleon66/vibe-coding-lab/issues/9) | #8 |
+| INC-011 | [#10](https://github.com/cammeleon66/vibe-coding-lab/issues/10) | #9 |
+| INC-012 | [#11](https://github.com/cammeleon66/vibe-coding-lab/issues/11) | #10 |
+| INC-013 | [#12](https://github.com/cammeleon66/vibe-coding-lab/issues/12) | #11 |
+| INC-014 | [#13](https://github.com/cammeleon66/vibe-coding-lab/issues/13) | #12 and explicit deployment approval |
+
+#### INC-008: Referral journey foundation and role entry
+
+**Depends on:** Product brief 0.3 and DEC-010.
+
+**Outcome:** A persisted journey snapshot and command interface drive the role
+picker, Milan workspace, three-patient worklist, and activity timeline.
+
+**Scope:**
+
+- Define `ReferralJourneySnapshot`, typed actions, transition errors, and the
+  referral journey module.
+- Migrate existing `DemoState` fields behind the module without losing reset,
+  restore, or Azure Blob-state compatibility.
+- Add Milan and Utrecht synthetic role contexts.
+- Add the three-patient worklist and select the referral candidate.
+- Render the six-stage rail and activity timeline shell.
+
+**Acceptance criteria:**
+
+- Invalid action ordering is rejected by the module, not inferred by the UI.
+- Existing persisted states load through backward-compatible defaults.
+- The role picker explains responsibilities without acting as production
+  authentication.
+- One patient is a clear referral candidate; the other two remain realistic
+  but cannot enter the referral flow.
+- Future stages state their prerequisites.
+- Unit, route, restore, reset, and frontend navigation tests pass.
+
+#### INC-009: Federated Milan data check
+
+**Depends on:** INC-008.
+
+**Outcome:** The audience sees real demo calls to three hospital-owned source
+adapters and understands what data exists without seeing a centralized import.
+
+**Scope:**
+
+- Add distinct Milan EHR, document-repository, and PACS query actions.
+- Return available records, missing evidence, source ownership, and endpoint
+  identity.
+- Record each query and result in the activity timeline.
+- Build the split clinical/API screen.
+
+**Acceptance criteria:**
+
+- The browser performs actual backend calls for all three sources.
+- Each result identifies the source system and available or missing evidence.
+- No source record is copied into shared state merely because it was queried.
+- Failure of one source remains visible and does not produce a success-shaped
+  package.
+- The activity timeline is restored after refresh.
+
+#### INC-010: Expert destination and approved referral package
+
+**Depends on:** INC-009.
+
+**Outcome:** Dr Bianchi confirms the question, selects Utrecht from bounded
+matches, reviews the hybrid package, records his referral assessment, and
+approves case version 1 for sharing.
+
+**Scope:**
+
+- Query the expert-centre directory and Utrecht requirements through separate
+  adapters.
+- Explain match reasons and directory limitations.
+- Prepare case version 1 through the existing case-preparation module.
+- Show exactly what enters the package and what remains in Milan.
+- Preserve source inspection and provenance.
+- Record the Milan referral assessment separately from the Utrecht specialist
+  opinion.
+
+**Acceptance criteria:**
+
+- Utrecht is selected through explainable matching, not direct navigation.
+- Referral requirements come from the Utrecht requirements adapter.
+- The package contains structured context and provenance, not every source
+  file.
+- Sending requires an explicit Milan approval.
+- Refresh restores the sent case version and next role.
+
+#### INC-011: Utrecht receiving review and evidence request
+
+**Depends on:** INC-010.
+
+**Outcome:** The story switches to Dr van Dijk, who acknowledges case version 1,
+reviews the source-linked package, records a provisional specialist opinion,
+and requests missing imaging.
+
+**Scope:**
+
+- Add the guided Milan-to-Utrecht role transition.
+- Build the Utrecht incoming-referral screen.
+- Add version acknowledgement.
+- Add a prefilled but editable provisional specialist opinion.
+- Replace technical condition checkboxes with plain evidence status and one
+  evidence-request action.
+
+**Acceptance criteria:**
+
+- Utrecht cannot review a package that Milan has not approved and sent.
+- The exact case version under review is visible and acknowledged.
+- The provisional opinion is owned by Dr van Dijk and remains distinct from Dr
+  Bianchi's referral assessment.
+- The evidence request names the missing evidence and clinical reason.
+- No raw workflow-condition identifiers appear in the UI.
+
+#### INC-012: Versioned update and closed-loop MDO outcome
+
+**Depends on:** INC-011.
+
+**Outcome:** Milan approves case version 2, Utrecht acknowledges it, records the
+final specialist opinion, accepts it into MDO, and Milan receives the result.
+
+**Scope:**
+
+- Keep the Event Grid evidence-arrival path and immutable case delta.
+- Require an Utrecht evidence request before the update can enter the journey.
+- Require Milan approval before version 2 crosses the institutional seam.
+- Require Utrecht acknowledgement before final review.
+- Record the final specialist opinion, MDO schedule, and next responsibility.
+- Add the closed-loop Milan result screen.
+
+**Acceptance criteria:**
+
+- Case version 1 remains inspectable.
+- Duplicate evidence delivery remains idempotent.
+- Utrecht cannot acknowledge an unapproved update.
+- The final opinion applies to the current case version.
+- MDO acceptance names the version, clinician, date, and next responsibility.
+- Milan can see the returned opinion and MDO state.
+
+#### INC-013: Demonstration quality and plain-language review
+
+**Depends on:** INC-012.
+
+**Outcome:** The full journey is clear, accessible, visually reviewed, and
+presentable in about five minutes.
+
+**Scope:**
+
+- Remove research from the primary journey while preserving its backend and
+  optional appendix capability.
+- Hide preflight from the clinical interface.
+- Audit every heading, label, empty state, helper text, and error for direct
+  clinical language.
+- Add responsive desktop/mobile layouts, keyboard navigation, focus handling,
+  loading/error states, and visual evidence.
+- Rewrite the presenter guide for the new journey.
+
+**Acceptance criteria:**
+
+- No slogan-like, vague AI, or marketing copy remains.
+- A presenter can complete the journey without explaining why a control is
+  disabled.
+- Completed stages can be revisited; locked stages state the prerequisite.
+- Axe, keyboard, desktop, mobile, visual, Vitest, backend, lint, type, and build
+  checks pass.
+- The rehearsed path completes in approximately five minutes.
+
+#### INC-014: Azure deployment and live rehearsal
+
+**Depends on:** INC-013 and explicit deployment approval.
+
+**Outcome:** The approved redesign runs on the existing private Azure baseline
+and passes the complete live referral rehearsal.
+
+**Scope:**
+
+- Build and deploy one reviewed image.
+- Preserve the current access code unless rotation is explicitly requested.
+- Reuse the existing managed identity, storage, Event Grid, private endpoints,
+  DNS, monitoring, budget, and expiry.
+- Run the live Milan-to-Utrecht closed-loop rehearsal.
+
+**Acceptance criteria:**
+
+- No new paid Azure service or trust-boundary change is introduced.
+- Access-code, health, protected API, Event Grid secret, and private-storage
+  checks pass.
+- The live activity timeline survives refresh.
+- The complete role, referral, update, and MDO path passes on desktop and
+  mobile.
+- Deployment evidence and rollback image are recorded.
 
 ## Implementation strategy
 

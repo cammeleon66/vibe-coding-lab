@@ -1,7 +1,7 @@
 # Product discovery: European oncology collaboration demo
 
-**Status:** Product direction approved; ready for architecture
-**Last updated:** 2026-09-23
+**Status:** Revised product direction approved; implementation in progress
+**Last updated:** 2026-09-24
 **Primary audience:** Professor Miriam Koopman and oncology stakeholders in the room
 **Presenter:** Product/demo presenter
 
@@ -73,10 +73,12 @@ The demonstration should prove that useful cross-border collaboration does not r
 
 ### DEC-007: Autonomous MDO relationship
 
-**Decision:** End with a narrative handoff to the existing autonomous MDO demonstration rather than initially integrating the two backends.
+**Status:** Superseded by DEC-010.
+**Decision:** The original version ended with a narrative handoff to the existing autonomous MDO demonstration rather than integrating the two backends.
 **Approved by:** User
 **Date:** 2026-09-23
-**Implications:** The collaboration platform must visibly prepare a review-ready case and preserve a future integration seam, but the first version may use a controlled launch or deep link.
+**Superseded on:** 2026-09-24
+**Reason:** The approved redesign now includes a simulated Utrecht receiving workflow, evidence request, version acknowledgement, MDO acceptance, and returned outcome inside this demonstration.
 
 ### DEC-008: Expertise discovery model
 
@@ -93,23 +95,31 @@ The demonstration should prove that useful cross-border collaboration does not r
 **Date:** 2026-09-23
 **Re-approval conditions:** Material changes to expertise discovery, clinical use case, audience, core journey, MDO relationship, clinical/research boundary, or success measures.
 
-## JOURNEY-001: Clinical journey under consideration
+### DEC-010: Closed-loop federated referral
 
-1. A synthetic Italian oncologist defines the clinical need for a patient with colorectal liver metastases.
-2. The platform finds suitable verified European expert centres and teams, then eligible clinicians within them.
-3. The platform explains why Utrecht is a credible match and what referral or evidence conditions apply.
-4. The Italian oncologist selects the fictional Utrecht colorectal oncologist and initiates the request.
-5. The receiving oncologist sees the clinical question, urgency, sender, authorization context, and responsibility.
-6. The platform assembles information from two differently structured institutional sources.
-7. The workspace distinguishes source facts, normalized values, conflicts, missing information, and AI-generated synthesis.
-8. Important summary claims link to their source evidence.
-9. Imaging, pathology, molecular status, prior treatment, response, and patient fitness support resectability review.
-10. Original baseline liver imaging and a restaging MRI arrive; the workspace links lesion history, highlights new anatomical evidence, and identifies which conclusions require reassessment.
-11. The human clinician records a considered opinion and the responsible next action.
-12. The prepared case hands off narratively to the autonomous MDO.
-13. The presentation points toward a separately authorized research workspace without conflating clinical and research permissions.
+**Decision:** Replace the one-sided referral-to-handoff story with a closed loop across visible Milan and Utrecht workspaces.
+**Approved by:** User
+**Date:** 2026-09-24
+**Implications:** The main journey starts from a Milan patient worklist, shows federated API calls, requires explicit sharing approvals, switches to the Utrecht receiving role, handles a requested evidence update, ends with MDO acceptance and a returned specialist opinion, and removes research from the primary path.
 
-This journey is approved as the product direction. Architecture must preserve it or return for re-approval.
+## JOURNEY-001: Approved clinical journey
+
+1. The presenter chooses a synthetic clinical role and enters Dr Luca Bianchi's Milan workspace.
+2. Dr Bianchi selects the referral candidate from three synthetic active patients.
+3. The platform calls the Milan EHR, document repository, and PACS and shows the result of each request.
+4. Dr Bianchi confirms the clinical question.
+5. The platform calls the European expert directory and Utrecht referral-requirements service.
+6. Dr Bianchi selects Utrecht and Dr Eva van Dijk.
+7. The platform prepares case version 1 and distinguishes information in the referral package from source evidence that stays in Milan.
+8. Dr Bianchi records the referral assessment, approves the package, and sends it.
+9. The presenter follows a guided role handoff to Dr van Dijk's Utrecht inbox.
+10. Dr van Dijk acknowledges case version 1, records a provisional specialist opinion, and requests missing imaging.
+11. New imaging becomes available in Milan and the platform prepares case version 2.
+12. Dr Bianchi approves the update; Dr van Dijk acknowledges the new version.
+13. Dr van Dijk finalizes the specialist opinion and accepts case version 2 into the MDO.
+14. Milan receives the opinion, MDO state, and next responsibility.
+
+A persistent activity timeline shows API calls, approvals, transfers, acknowledgements, evidence requests, and clinical decisions. The primary path contains no research workflow.
 
 ## Evidence and inspiration
 
@@ -139,14 +149,14 @@ This journey is approved as the product direction. Architecture must preserve it
 | ASM-002 | Heterogeneous source data is more persuasive than a clean, standardized dataset. | High | Data complexity distracts from rather than strengthens the clinical story. |
 | ASM-003 | Liver-metastasis conversion and resectability creates an authentic decision for the target audience. | High | Professor Koopman considers another colorectal workflow materially more relevant. |
 | ASM-004 | A presenter-led journey is the best format for the event. | High | The event requires hands-on clinician operation or open-ended exploration. |
-| ASM-005 | The research workspace should appear as a second horizon rather than a full first-demo workflow. | Medium | Research collaboration is equally important to the immediate audience outcome. |
+| ASM-005 | Research should remain outside the primary five-minute journey. | High | The audience requires research reuse to understand the referral outcome. |
 | ASM-006 | Two simulated institutions are sufficient to establish a European platform story. | Medium | The audience needs a third role, such as a shared platform or laboratory, to understand the governance boundary. |
 | ASM-007 | Expert-centre discovery is a compelling first act rather than administrative preamble. | Medium-high | The audience already knows whom to contact and sees no discovery problem. |
 
 ## Risks
 
 - Building a generic data platform rather than a clinical collaboration experience.
-- Showing AI as making or recommending a treatment decision instead of preparing evidence for human judgement.
+- Showing platform automation as making or recommending a treatment decision instead of preparing evidence for human judgement.
 - Overloading the demonstration with clinical collaboration, research, interoperability, identity, and governance in one journey.
 - Making the synthetic case medically implausible or too similar to a real patient.
 - Implying Professor Koopman's endorsement, preferences, or fictional clinical decisions.
@@ -156,6 +166,6 @@ This journey is approved as the product direction. Architecture must preserve it
 
 ## Open questions
 
-- What is the one dramatic moment that should make the audience recognize the platform's value?
-- Which two institutional source formats best represent credible messy reality?
-- What research-workspace glimpse is sufficient to establish the broader foundation?
+No product-scope question currently blocks implementation. Implementation risks and
+dependencies are tracked in GitHub issues #7–#13 and
+`docs/implementation/plan.md`.
