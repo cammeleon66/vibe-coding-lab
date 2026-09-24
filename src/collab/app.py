@@ -1,18 +1,20 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import logging
 import os
 import secrets
+from collections.abc import Awaitable, Callable
 from pathlib import Path
-from time import monotonic, sleep
+from time import monotonic, sleep, time
 from typing import Protocol
 from uuid import uuid4
 
 from azure.identity import DefaultAzureCredential
 from fastapi import Cookie, FastAPI, Header, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from collab.arrivals import EvidenceArrivalError, EvidenceArrivalService
@@ -33,6 +35,7 @@ from collab.handoff import CollaborationWorkflow, HandoffError
 from collab.models import (
     CaseUpdateError,
     ClinicalNeed,
+    DemoAccessCreate,
     DemoState,
     EvidenceArrivalEvent,
     EvidenceArrivalResult,
@@ -82,6 +85,116 @@ class EvidenceArrivalPublisher(Protocol):
 
 
 logger = logging.getLogger("collab")
+DEMO_ACCESS_COOKIE = "demo_access_session"
+DEMO_ACCESS_TTL_SECONDS = 12 * 60 * 60
+
+
+def _create_demo_access_token(secret: str) -> str:
+    expires_at = str(int(time()) + DEMO_ACCESS_TTL_SECONDS)
+    signature = hmac.new(
+        secret.encode(),
+        expires_at.encode(),
+        hashlib.sha256,
+    ).hexdigest()
+    return f"{expires_at}.{signature}"
+
+
+def _valid_demo_access_token(token: str | None, secret: str) -> bool:
+    if not token:
+        return False
+    try:
+        expires_at, supplied_signature = token.split(".", maxsplit=1)
+        if int(expires_at) <= int(time()):
+            return False
+    except (TypeError, ValueError):
+        return False
+    expected_signature = hmac.new(
+        secret.encode(),
+        expires_at.encode(),
+        hashlib.sha256,
+    ).hexdigest()
+    return hmac.compare_digest(supplied_signature, expected_signature)
+
+
+def _demo_access_page() -> str:
+    return """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>European oncology collaboration demo</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; display: grid; place-items: center;
+      background: #07120f; color: #eef7f3;
+    }
+    main {
+      width: min(30rem, calc(100% - 2rem)); padding: 2.5rem;
+      border: 1px solid #28473e; background: #0d1d18; box-shadow: 0 2rem 6rem #0008;
+    }
+    .eyebrow {
+      color: #72d3ad; font-size: .75rem; font-weight: 700;
+      letter-spacing: .14em; text-transform: uppercase;
+    }
+    h1 {
+      margin: .75rem 0 1rem; font-size: clamp(2rem, 7vw, 3.25rem);
+      line-height: .95; letter-spacing: -.04em;
+    }
+    p { color: #aac2b9; line-height: 1.6; }
+    label { display: block; margin: 2rem 0 .5rem; font-size: .85rem; font-weight: 700; }
+    input, button { width: 100%; min-height: 3.25rem; border-radius: .25rem; font: inherit; }
+    input { border: 1px solid #42695c; background: #07120f; color: white; padding: 0 1rem; }
+    input:focus { outline: 3px solid #72d3ad55; border-color: #72d3ad; }
+    button {
+      margin-top: .75rem; border: 0; background: #72d3ad;
+      color: #07120f; font-weight: 800; cursor: pointer;
+    }
+    button:disabled { opacity: .6; cursor: wait; }
+    #error { min-height: 1.5rem; color: #ff9b91; font-size: .9rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="eyebrow">Synthetic clinical demonstration</div>
+    <h1>Collaborate across borders.</h1>
+    <p>Enter the shared demo code to open the European oncology collaboration workspace.</p>
+    <form id="access-form">
+      <label for="code">Demo access code</label>
+      <input
+        id="code" name="code" type="password"
+        autocomplete="current-password" required autofocus
+      >
+      <button type="submit">Open workspace</button>
+      <p id="error" role="alert" aria-live="polite"></p>
+    </form>
+  </main>
+  <script>
+    document.getElementById("access-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const button = event.currentTarget.querySelector("button");
+      const error = document.getElementById("error");
+      button.disabled = true;
+      error.textContent = "";
+      const response = await fetch("/api/demo-access", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({code: document.getElementById("code").value})
+      });
+      if (response.ok) {
+        const requested = new URLSearchParams(window.location.search).get("next") || "/";
+        const safeTarget =
+          requested.startsWith("/") && !requested.startsWith("//") ? requested : "/";
+        window.location.assign(safeTarget);
+        return;
+      }
+      error.textContent = "That access code is not valid.";
+      button.disabled = false;
+    });
+  </script>
+</body>
+</html>"""
 
 
 def create_app(
@@ -98,6 +211,8 @@ def create_app(
     arrival_publisher: EvidenceArrivalPublisher | None = None,
     runtime_mode: str | None = None,
     event_grid_webhook_secret: str | None = None,
+    demo_access_code: str | None = None,
+    demo_session_secret: str | None = None,
 ) -> FastAPI:
     repository_root = Path(__file__).resolve().parents[2]
     configured_frontend_dist = frontend_dist
@@ -118,6 +233,14 @@ def create_app(
     configured_event_grid_secret = event_grid_webhook_secret or os.getenv(
         "EVENT_GRID_WEBHOOK_SECRET"
     )
+    configured_demo_access_code = demo_access_code or os.getenv("DEMO_ACCESS_CODE")
+    configured_demo_session_secret = demo_session_secret or os.getenv(
+        "DEMO_SESSION_SECRET"
+    )
+    if bool(configured_demo_access_code) != bool(configured_demo_session_secret):
+        raise RuntimeError(
+            "DEMO_ACCESS_CODE and DEMO_SESSION_SECRET must be configured together."
+        )
     directory = SyntheticExpertDirectory(configured_fixture_root / "expert_centres.json")
     referral_service = ReferralService(directory)
     configured_publisher = arrival_publisher
@@ -210,9 +333,74 @@ def create_app(
         allow_headers=["*"],
     )
 
+    @application.middleware("http")
+    async def require_demo_access(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        if not configured_demo_access_code or not configured_demo_session_secret:
+            return await call_next(request)
+        path = request.url.path
+        if (
+            request.method == "OPTIONS"
+            or path in {
+                "/api/health",
+                "/api/event-grid/evidence-arrivals",
+                "/api/demo-access",
+                "/demo-access",
+            }
+            or _valid_demo_access_token(
+                request.cookies.get(DEMO_ACCESS_COOKIE),
+                configured_demo_session_secret,
+            )
+        ):
+            return await call_next(request)
+        if path.startswith("/api/"):
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content={"detail": "Demo access is required."},
+            )
+        return RedirectResponse(
+            url=f"/demo-access?next={path}",
+            status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+        )
+
     @application.get("/api/health")
     def health() -> dict[str, str]:
         return {"status": "ok", "mode": reported_runtime_mode}
+
+    @application.get("/demo-access", response_class=HTMLResponse)
+    def demo_access_page() -> str:
+        return _demo_access_page()
+
+    @application.post("/api/demo-access", status_code=status.HTTP_204_NO_CONTENT)
+    def create_demo_access(payload: DemoAccessCreate, response: Response) -> None:
+        if not configured_demo_access_code or not configured_demo_session_secret:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Shared demo access is not configured.",
+            )
+        if not hmac.compare_digest(payload.code, configured_demo_access_code):
+            sleep(0.5)
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="The demo access code is invalid.",
+            )
+        response.set_cookie(
+            DEMO_ACCESS_COOKIE,
+            _create_demo_access_token(configured_demo_session_secret),
+            max_age=DEMO_ACCESS_TTL_SECONDS,
+            httponly=True,
+            secure=configured_runtime_mode == "azure",
+            samesite="strict",
+        )
+
+    @application.post(
+        "/api/demo-access/logout",
+        status_code=status.HTTP_204_NO_CONTENT,
+    )
+    def revoke_demo_access(response: Response) -> None:
+        response.delete_cookie(DEMO_ACCESS_COOKIE, samesite="strict")
 
     @application.get("/api/preflight", response_model=PreflightReport)
     def preflight() -> PreflightReport:

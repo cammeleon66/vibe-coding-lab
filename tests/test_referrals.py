@@ -132,6 +132,41 @@ def test_preflight_uses_configured_packaged_frontend(
     assert checks["frontend-build"]["status"] == "pass"
 
 
+def test_shared_demo_code_protects_ui_and_api(tmp_path: Path) -> None:
+    frontend_dist = tmp_path / "frontend-dist"
+    frontend_dist.mkdir()
+    (frontend_dist / "index.html").write_text("<!doctype html>", encoding="utf-8")
+    with TestClient(
+        create_app(
+            tmp_path / "state.json",
+            frontend_dist=frontend_dist,
+            demo_access_code="shared-demo-code",
+            demo_session_secret="session-signing-secret",
+        ),
+        base_url="https://testserver",
+        follow_redirects=False,
+    ) as client:
+        protected_page = client.get("/")
+        protected_api = client.get("/api/preflight")
+        health = client.get("/api/health")
+        event_grid = client.post("/api/event-grid/evidence-arrivals", json=[])
+        wrong_code = client.post("/api/demo-access", json={"code": "wrong"})
+        accepted = client.post(
+            "/api/demo-access", json={"code": "shared-demo-code"}
+        )
+        unlocked_page = client.get("/")
+
+    assert protected_page.status_code == 307
+    assert protected_page.headers["location"].startswith("/demo-access")
+    assert protected_api.status_code == 401
+    assert health.status_code == 200
+    assert event_grid.status_code == 403
+    assert wrong_code.status_code == 401
+    assert accepted.status_code == 204
+    assert "demo_access_session=" in accepted.headers["set-cookie"]
+    assert unlocked_page.status_code == 200
+
+
 def test_preflight_fails_when_a_fixture_cannot_be_parsed(tmp_path: Path) -> None:
     source_fixtures = Path(__file__).parents[1] / "src" / "collab" / "fixtures"
     fixture_root = tmp_path / "fixtures"

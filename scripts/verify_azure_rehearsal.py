@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import argparse
 import json
+from http.cookiejar import CookieJar
 from typing import Any
 from urllib.error import HTTPError
-from urllib.request import Request, urlopen
+from urllib.request import HTTPCookieProcessor, OpenerDirector, Request, build_opener
 
 
 def request_json(
+    opener: OpenerDirector,
     base_url: str,
     path: str,
     *,
@@ -22,7 +24,7 @@ def request_json(
         headers={"Content-Type": "application/json"},
     )
     try:
-        with urlopen(request, timeout=60) as response:
+        with opener.open(request, timeout=60) as response:
             content = response.read()
     except HTTPError as error:
         detail = error.read().decode("utf-8", errors="replace")
@@ -30,14 +32,32 @@ def request_json(
     return None if not content else json.loads(content)
 
 
-def verify(base_url: str) -> None:
-    preflight = request_json(base_url, "/api/preflight")
+def verify(base_url: str, access_code: str | None = None) -> None:
+    opener = build_opener(HTTPCookieProcessor(CookieJar()))
+
+    def call(
+        path: str,
+        *,
+        method: str = "GET",
+        payload: object | None = None,
+    ) -> Any:
+        return request_json(
+            opener,
+            base_url,
+            path,
+            method=method,
+            payload=payload,
+        )
+
+    if access_code:
+        call("/api/demo-access", method="POST", payload={"code": access_code})
+
+    preflight = call("/api/preflight")
     if not preflight["ready"] or preflight["mode"] != "azure-synthetic-rehearsal":
         raise RuntimeError(f"Azure preflight was not ready: {preflight}")
 
-    request_json(base_url, "/api/reset", method="POST")
-    referral = request_json(
-        base_url,
+    call("/api/reset", method="POST")
+    referral = call(
         "/api/referrals",
         method="POST",
         payload={
@@ -52,12 +72,11 @@ def verify(base_url: str) -> None:
             },
         },
     )
-    prepared = request_json(base_url, "/api/cases/current/prepare", method="POST")
+    prepared = call("/api/cases/current/prepare", method="POST")
     if referral["id"] != prepared["referral_id"] or prepared["version"] != 1:
         raise RuntimeError("Azure referral-to-prepared-case continuity failed.")
 
-    arrival = request_json(
-        base_url,
+    arrival = call(
         "/api/evidence-arrivals",
         method="POST",
         payload={
@@ -73,7 +92,7 @@ def verify(base_url: str) -> None:
     if arrival["duplicate"] or updated["version"] != 2 or updated["delta"] is None:
         raise RuntimeError("Event Grid did not produce the expected prepared case v2 delta.")
 
-    review_state = request_json(base_url, "/api/cases/current/review")
+    review_state = call("/api/cases/current/review")
     conditions = [
         {
             "issue_id": condition["issue_id"],
@@ -82,8 +101,7 @@ def verify(base_url: str) -> None:
         }
         for condition in review_state["required_conditions"]
     ]
-    reviewed = request_json(
-        base_url,
+    reviewed = call(
         "/api/cases/current/reviews",
         method="POST",
         payload={
@@ -103,8 +121,7 @@ def verify(base_url: str) -> None:
     if not reviewed["handoff_ready"] or reviewed["opinion"] is None:
         raise RuntimeError("Azure human-review responsibility gate did not become ready.")
 
-    manifest = request_json(
-        base_url,
+    manifest = call(
         "/api/cases/current/handoffs",
         method="POST",
         payload={
@@ -115,8 +132,8 @@ def verify(base_url: str) -> None:
     if manifest["evidence_version"] != 2 or not manifest["separate_backend"]:
         raise RuntimeError("Azure MDO handoff continuity was not preserved.")
 
-    request_json(base_url, "/api/reset", method="POST")
-    if request_json(base_url, "/api/cases/current") is not None:
+    call("/api/reset", method="POST")
+    if call("/api/cases/current") is not None:
         raise RuntimeError("Azure rehearsal reset did not restore a clean state.")
 
     print(
@@ -136,8 +153,9 @@ def verify(base_url: str) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-url", required=True)
+    parser.add_argument("--access-code")
     arguments = parser.parse_args()
-    verify(arguments.base_url)
+    verify(arguments.base_url, arguments.access_code)
 
 
 if __name__ == "__main__":

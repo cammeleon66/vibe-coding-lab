@@ -8,7 +8,8 @@ param(
     [int]$ExpiryDays = 14,
     [switch]$ResumeAfterBase,
     [switch]$ReuseExistingImage,
-    [string]$ApplicationImageTag = ""
+    [string]$ApplicationImageTag = "",
+    [string]$DemoAccessCode = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -22,7 +23,20 @@ function Invoke-AzureCli {
 
     $output = & az @Arguments
     if ($LASTEXITCODE -ne 0) {
-        throw "Azure CLI failed: az $($Arguments -join ' ')"
+        $safeArguments = @(
+            foreach ($argument in $Arguments) {
+                if (
+                    $argument -match
+                    "^(eventGridWebhookSecret|demoAccessCode|demoSessionSecret)="
+                ) {
+                    "$($Matches[1])=<REDACTED>"
+                }
+                else {
+                    $argument
+                }
+            }
+        )
+        throw "Azure CLI failed: az $($safeArguments -join ' ')"
     }
     return $output
 }
@@ -201,6 +215,14 @@ else {
 $secretBytes = New-Object byte[] 32
 [Security.Cryptography.RandomNumberGenerator]::Fill($secretBytes)
 $eventGridSecret = [Convert]::ToBase64String($secretBytes)
+$sessionSecretBytes = New-Object byte[] 32
+[Security.Cryptography.RandomNumberGenerator]::Fill($sessionSecretBytes)
+$demoSessionSecret = [Convert]::ToBase64String($sessionSecretBytes)
+if ([string]::IsNullOrWhiteSpace($DemoAccessCode)) {
+    $accessCodeBytes = New-Object byte[] 8
+    [Security.Cryptography.RandomNumberGenerator]::Fill($accessCodeBytes)
+    $DemoAccessCode = "EURO-" + [Convert]::ToHexString($accessCodeBytes)
+}
 
 Write-Host "Deploying the Container App..."
 $blobContributorRole = "Storage Blob Data Contributor"
@@ -244,6 +266,8 @@ try {
         "utrechtAccountUrl=$($outputs.utrechtAccountUrl.value)",
         "sharedAccountUrl=$($outputs.sharedAccountUrl.value)",
         "eventGridWebhookSecret=$eventGridSecret",
+        "demoAccessCode=$DemoAccessCode",
+        "demoSessionSecret=$demoSessionSecret",
         "ownerEmail=$OwnerEmail",
         "expiryDate=$expiry",
         "seedSyntheticFixtures=true",
@@ -254,11 +278,31 @@ try {
     $fqdn = $app.properties.outputs.fqdn.value
     $appName = $app.properties.outputs.applicationName.value
     $applicationUrl = "https://$fqdn"
+    [void](Invoke-AzureCli -Arguments @(
+        "containerapp", "auth", "update",
+        "--resource-group", $platformResourceGroup,
+        "--name", $appName,
+        "--enabled", "false",
+        "--yes",
+        "--only-show-errors",
+        "--output", "none"
+    ))
     $ready = $false
     for ($attempt = 1; $attempt -le 30; $attempt++) {
         $preflightDetail = "not reachable"
         try {
-            $preflight = Invoke-RestMethod -Uri "$applicationUrl/api/preflight" -TimeoutSec 20
+            $demoWebSession = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+            [void](Invoke-RestMethod `
+                -Uri "$applicationUrl/api/demo-access" `
+                -Method Post `
+                -ContentType "application/json" `
+                -Body (@{ code = $DemoAccessCode } | ConvertTo-Json -Compress) `
+                -WebSession $demoWebSession `
+                -TimeoutSec 20)
+            $preflight = Invoke-RestMethod `
+                -Uri "$applicationUrl/api/preflight" `
+                -WebSession $demoWebSession `
+                -TimeoutSec 20
             if ($preflight.ready) {
                 $ready = $true
                 break
@@ -348,7 +392,8 @@ else {
 
 Write-Host "Verifying the complete Azure rehearsal through Event Grid..."
 & "$repoRoot\.venv\Scripts\python.exe" "$repoRoot\scripts\verify_azure_rehearsal.py" `
-    --base-url $applicationUrl
+    --base-url $applicationUrl `
+    --access-code $DemoAccessCode
 if ($LASTEXITCODE -ne 0) {
     throw "The deployed Azure rehearsal failed end-to-end verification."
 }
@@ -364,75 +409,14 @@ $existingAppId = (
         )
     ) -join ""
 ).Trim()
-if ([string]::IsNullOrWhiteSpace($existingAppId)) {
-    $clientId = (
-        Invoke-AzureCli -Arguments @(
-            "ad", "app", "create",
-            "--display-name", $displayName,
-            "--sign-in-audience", "AzureADMyOrg",
-            "--web-redirect-uris", "$applicationUrl/.auth/login/aad/callback",
-            "--query", "appId",
-            "--output", "tsv"
-        )
-    ).Trim()
+if (-not [string]::IsNullOrWhiteSpace($existingAppId)) {
     [void](Invoke-AzureCli -Arguments @(
-        "ad", "sp", "create", "--id", $clientId, "--only-show-errors", "--output", "none"
+        "ad", "app", "delete",
+        "--id", $existingAppId,
+        "--only-show-errors"
     ))
 }
-else {
-    $clientId = $existingAppId
-    [void](Invoke-AzureCli -Arguments @(
-        "ad", "app", "update",
-        "--id", $clientId,
-        "--web-redirect-uris", "$applicationUrl/.auth/login/aad/callback",
-        "--only-show-errors",
-        "--output", "none"
-    ))
-}
-
-$clientSecret = (
-    Invoke-AzureCli -Arguments @(
-        "ad", "app", "credential", "reset",
-        "--id", $clientId,
-        "--display-name", "container-app-auth",
-        "--years", "1",
-        "--query", "password",
-        "--output", "tsv"
-    )
-).Trim()
-
-[void](Invoke-AzureCli -Arguments @(
-    "containerapp", "secret", "set",
-    "--resource-group", $platformResourceGroup,
-    "--name", $appName,
-    "--secrets", "entra-client-secret=$clientSecret",
-    "--only-show-errors",
-    "--output", "none"
-))
-[void](Invoke-AzureCli -Arguments @(
-    "containerapp", "auth", "microsoft", "update",
-    "--resource-group", $platformResourceGroup,
-    "--name", $appName,
-    "--client-id", $clientId,
-    "--client-secret-name", "entra-client-secret",
-    "--tenant-id", $account.tenantId,
-    "--yes",
-    "--only-show-errors",
-    "--output", "none"
-))
-[void](Invoke-AzureCli -Arguments @(
-    "containerapp", "auth", "update",
-    "--resource-group", $platformResourceGroup,
-    "--name", $appName,
-    "--enabled", "true",
-    "--action", "RedirectToLoginPage",
-    "--redirect-provider", "azureactivedirectory",
-    "--require-https", "true",
-    "--excluded-paths", "/api/health,/api/event-grid/evidence-arrivals",
-    "--yes",
-    "--only-show-errors",
-    "--output", "none"
-))
 
 Write-Host "Azure deployment complete: $applicationUrl"
+Write-Host "Shared demo access code: $DemoAccessCode"
 Write-Host "Expiry tag: $expiry. Fabric and Azure OpenAI remain disabled."

@@ -23,6 +23,10 @@ class Urgency(StrEnum):
     URGENT = "urgent"
 
 
+class DemoAccessCreate(BaseModel):
+    code: str = Field(min_length=1, max_length=128)
+
+
 class ReferralStatus(StrEnum):
     COLLABORATION_REQUESTED = "collaboration_requested"
 

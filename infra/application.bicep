@@ -11,6 +11,10 @@ param utrechtAccountUrl string
 param sharedAccountUrl string
 @secure()
 param eventGridWebhookSecret string
+@secure()
+param demoAccessCode string
+@secure()
+param demoSessionSecret string
 param ownerEmail string
 param expiryDate string
 param seedSyntheticFixtures bool = true
@@ -64,6 +68,14 @@ resource application 'Microsoft.App/containerApps@2025-01-01' = {
           name: 'event-grid-webhook-secret'
           value: eventGridWebhookSecret
         }
+        {
+          name: 'demo-access-code'
+          value: demoAccessCode
+        }
+        {
+          name: 'demo-session-secret'
+          value: demoSessionSecret
+        }
       ]
     }
     template: {
@@ -99,6 +111,14 @@ resource application 'Microsoft.App/containerApps@2025-01-01' = {
             {
               name: 'EVENT_GRID_WEBHOOK_SECRET'
               secretRef: 'event-grid-webhook-secret'
+            }
+            {
+              name: 'DEMO_ACCESS_CODE'
+              secretRef: 'demo-access-code'
+            }
+            {
+              name: 'DEMO_SESSION_SECRET'
+              secretRef: 'demo-session-secret'
             }
             {
               name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'

@@ -273,7 +273,8 @@ Fabric Data Factory or Real-Time Intelligence is not required for the core demo.
 
 Proposed demonstration model:
 
-- protect the deployed application with Microsoft Entra authentication for the presenter;
+- protect the deployed synthetic demo with the shared access-code session
+  described in DEC-008;
 - use managed identity from Container Apps to the three storage accounts;
 - disable public write access on storage;
 - represent Italian clinician, Utrecht clinician, clinical workspace, and research workspace roles as clearly labeled synthetic authorization contexts;
@@ -281,7 +282,8 @@ Proposed demonstration model:
 - record all state-changing presenter actions;
 - store no real patient or personal data.
 
-The Entra application and group design is an architecture approval item. It is not permission to create identities or role assignments.
+The access code is a time-limited demonstration control, not clinician identity
+or a production authorization design.
 
 ## Reliability and demonstration behavior
 
@@ -357,7 +359,8 @@ Before deployment, create a region-specific Azure Pricing Calculator estimate an
 2. Exclude Azure Health Data Services from version one.
 3. Use existing Fabric capacity only for the research epilogue.
 4. Use one deployable application with internal deep modules rather than microservices.
-5. Use Entra authentication for the presenter while keeping cross-border clinician identities explicitly synthetic.
+5. Use a shared demo access code while keeping cross-border clinician identities
+   explicitly synthetic.
 6. Preserve a deterministic rehearsal runtime; make Azure OpenAI optional and separately approved.
 7. Use a narrative, versioned MDO handoff rather than backend integration.
 
@@ -366,7 +369,7 @@ Before deployment, create a region-specific Azure Pricing Calculator estimate an
 **Decision:** Approved architecture proposal version 0.1 for implementation planning.
 **Approver:** User
 **Date:** 2026-09-23
-**Approved scope:** Container Apps application; Milan, Utrecht, and shared Blob Storage zones; Event Grid evidence updates; existing Fabric capacity for research only; no Azure Health Data Services; presenter Entra access with simulated clinician roles; deterministic rehearsal; optional separately approved Azure OpenAI; narrative MDO handoff.
+**Approved scope:** Container Apps application; Milan, Utrecht, and shared Blob Storage zones; Event Grid evidence updates; existing Fabric capacity for research only; no Azure Health Data Services; shareable demo-code access with simulated clinician roles; deterministic rehearsal; optional separately approved Azure OpenAI; narrative MDO handoff.
 **Not approved:** Azure provisioning, deployment, identity creation, role assignments, Fabric workspace creation or modification, Azure OpenAI usage, or ongoing cloud spend.
 **Re-approval conditions:** Material change to the operational backend, source-isolation model, identity model, Fabric role, AI runtime, MDO integration, or meaningful cost profile.
 

@@ -5,6 +5,11 @@
 **Date:** 2026-09-23  
 **Related issue:** GitHub #6 / INC-007
 
+The presenter-authentication portion of this baseline was superseded by
+DEC-008 on 2026-09-24 after tenant-bound Entra access prevented external demo
+sharing. The private networking, managed identity, cost, and teardown decisions
+remain unchanged.
+
 ## Approved baseline
 
 The user approved a West Europe deployment in subscription
