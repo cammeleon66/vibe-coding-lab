@@ -184,3 +184,96 @@ def test_utrecht_workspace_is_locked_until_a_referral_is_sent(tmp_path: Path) ->
 
     assert response.status_code == 409
     assert response.json()["detail"] == "Utrecht has no incoming referral yet."
+
+
+def test_milan_approves_source_linked_package_before_utrecht_can_enter(
+    tmp_path: Path,
+) -> None:
+    state_path = tmp_path / "state.json"
+    with TestClient(create_app(state_path)) as client:
+        client.post("/api/journey/actions", json={"type": "enter_role", "role": "milan"})
+        client.post(
+            "/api/journey/actions",
+            json={"type": "select_patient", "patient_id": "CRC-EU-001"},
+        )
+        for source_id in FederatedSourceId:
+            client.post(
+                "/api/journey/actions",
+                json={"type": "query_source", "source_id": source_id.value},
+            )
+
+        premature = client.post(
+            "/api/journey/actions",
+            json={
+                "type": "approve_referral_package",
+                "referral_assessment": "Referral is appropriate for specialist review.",
+            },
+        )
+        client.post(
+            "/api/journey/actions",
+            json={
+                "type": "confirm_referral_question",
+                "question": (
+                    "Please assess response to conversion therapy and liver resectability."
+                ),
+            },
+        )
+        matches = client.post(
+            "/api/journey/actions",
+            json={"type": "query_expert_directory"},
+        ).json()
+        selected = client.post(
+            "/api/journey/actions",
+            json={
+                "type": "select_destination",
+                "centre_id": "utrecht-crc",
+                "clinician_id": "eva-van-dijk",
+            },
+        )
+        requirements = client.post(
+            "/api/journey/actions",
+            json={"type": "query_requirements"},
+        ).json()
+        prepared = client.post(
+            "/api/journey/actions",
+            json={"type": "prepare_referral_package"},
+        ).json()
+        approved = client.post(
+            "/api/journey/actions",
+            json={
+                "type": "approve_referral_package",
+                "referral_assessment": (
+                    "Giulia has liver-limited metastatic colorectal cancer with response "
+                    "after conversion therapy. Please assess resectability and the next "
+                    "multidisciplinary step."
+                ),
+            },
+        ).json()
+
+    restored = ReferralJourney(
+        JsonStateStore(state_path),
+        local_milan_sources(
+            Path(__file__).parents[1] / "src" / "collab" / "fixtures" / "milan"
+        ),
+    ).snapshot()
+
+    assert premature.status_code == 409
+    assert matches["destinations"][0]["centre_id"] == "utrecht-crc"
+    assert selected.status_code == 200
+    assert [item["status"] for item in requirements["requirements"]] == [
+        "missing",
+        "missing",
+        "present",
+        "missing",
+        "present",
+    ]
+    assert prepared["package"]["case_version"] == 1
+    assert prepared["package"]["approved"] is False
+    assert prepared["package"]["provenance_links"] > 0
+    assert "Original CT and MRI image files" in prepared["package"]["retained_in_milan"]
+    assert approved["package"]["approved"] is True
+    assert approved["next_role"] == "utrecht"
+    assert approved["stages"][3]["status"] == "current"
+    assert approved["roles"][1]["available"] is True
+    assert restored.package is not None
+    assert restored.package.referral_assessment is not None

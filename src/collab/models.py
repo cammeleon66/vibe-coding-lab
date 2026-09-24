@@ -65,6 +65,46 @@ class SourceCheckResult(BaseModel):
     error: str | None = None
 
 
+class JourneyMatchReasonView(BaseModel):
+    label: str
+    detail: str
+    status: Literal["match", "condition"]
+
+
+class JourneyDestinationView(BaseModel):
+    centre_id: str
+    centre_name: str
+    city: str
+    country: str
+    clinician_id: str
+    clinician_name: str
+    score: int
+    reasons: list[JourneyMatchReasonView]
+    limitations: list[str]
+
+
+class JourneyRequirementView(BaseModel):
+    key: str
+    label: str
+    rationale: str
+    status: Literal["present", "missing"]
+
+
+class ReferralPackageView(BaseModel):
+    case_version: int
+    clinical_question: str
+    centre_name: str
+    clinician_name: str
+    requirements: list[JourneyRequirementView]
+    structured_context: list[str]
+    retained_in_milan: list[str]
+    provenance_links: int
+    missing_evidence: list[str]
+    approved: bool = False
+    approved_by: str | None = None
+    referral_assessment: str | None = None
+
+
 class JourneyActivity(BaseModel):
     id: str
     kind: Literal[
@@ -72,6 +112,12 @@ class JourneyActivity(BaseModel):
         "patient_selected",
         "source_queried",
         "source_query_failed",
+        "question_confirmed",
+        "directory_queried",
+        "requirements_queried",
+        "destination_selected",
+        "package_prepared",
+        "package_approved",
     ]
     actor: str
     institution: str
@@ -86,6 +132,11 @@ class ReferralJourneyState(BaseModel):
     current_stage: JourneyStageId = JourneyStageId.PATIENT
     activity: list[JourneyActivity] = Field(default_factory=list)
     source_checks: dict[FederatedSourceId, SourceCheckResult] = Field(default_factory=dict)
+    clinical_question: str | None = None
+    destinations: list[JourneyDestinationView] = Field(default_factory=list)
+    selected_centre_id: str | None = None
+    requirements: list[JourneyRequirementView] = Field(default_factory=list)
+    package: ReferralPackageView | None = None
 
 
 class JourneyRoleView(BaseModel):
@@ -126,6 +177,12 @@ class ReferralJourneySnapshot(BaseModel):
     stages: list[JourneyStageView]
     activity: list[JourneyActivity]
     source_checks: list[SourceCheckResult]
+    clinical_question: str | None
+    destinations: list[JourneyDestinationView]
+    selected_centre_id: str | None
+    requirements: list[JourneyRequirementView]
+    package: ReferralPackageView | None
+    next_role: JourneyRole | None = None
 
 
 class EnterRoleAction(BaseModel):
@@ -143,8 +200,44 @@ class QuerySourceAction(BaseModel):
     source_id: FederatedSourceId
 
 
+class ConfirmReferralQuestionAction(BaseModel):
+    type: Literal["confirm_referral_question"] = "confirm_referral_question"
+    question: str = Field(min_length=10, max_length=500)
+
+
+class QueryExpertDirectoryAction(BaseModel):
+    type: Literal["query_expert_directory"] = "query_expert_directory"
+
+
+class SelectDestinationAction(BaseModel):
+    type: Literal["select_destination"] = "select_destination"
+    centre_id: str = Field(min_length=1)
+    clinician_id: str = Field(min_length=1)
+
+
+class QueryRequirementsAction(BaseModel):
+    type: Literal["query_requirements"] = "query_requirements"
+
+
+class PrepareReferralPackageAction(BaseModel):
+    type: Literal["prepare_referral_package"] = "prepare_referral_package"
+
+
+class ApproveReferralPackageAction(BaseModel):
+    type: Literal["approve_referral_package"] = "approve_referral_package"
+    referral_assessment: str = Field(min_length=20, max_length=2000)
+
+
 ReferralJourneyAction = Annotated[
-    EnterRoleAction | SelectPatientAction | QuerySourceAction,
+    EnterRoleAction
+    | SelectPatientAction
+    | QuerySourceAction
+    | ConfirmReferralQuestionAction
+    | QueryExpertDirectoryAction
+    | SelectDestinationAction
+    | QueryRequirementsAction
+    | PrepareReferralPackageAction
+    | ApproveReferralPackageAction,
     Field(discriminator="type"),
 ]
 
@@ -541,6 +634,8 @@ class PreflightReport(BaseModel):
 
 class DemoState(BaseModel):
     referral_journey: ReferralJourneyState = Field(default_factory=ReferralJourneyState)
+    pending_referral: Referral | None = None
+    pending_prepared_case: PreparedCase | None = None
     current_referral: Referral | None = None
     current_prepared_case: PreparedCase | None = None
     prepared_case_versions: list[PreparedCase] = Field(default_factory=list)

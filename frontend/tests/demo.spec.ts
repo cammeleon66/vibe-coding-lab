@@ -22,7 +22,7 @@ test.beforeEach(async ({ page }) => {
   await reset(page)
 })
 
-test('enters the Milan workspace and selects the referral patient', async ({ page }) => {
+test('prepares and approves the Milan referral package', async ({ page }) => {
   await page.goto('/')
 
   await expect(page.getByRole('heading', { name: 'Choose a clinical workspace' })).toBeVisible()
@@ -48,6 +48,33 @@ test('enters the Milan workspace and selects the referral patient', async ({ pag
       .getByRole('listitem')
       .filter({ hasText: 'Referral' }),
   ).toHaveAttribute('aria-current', 'step')
+
+  await page.getByRole('button', { name: 'Confirm referral and destination' }).click()
+  await expect(
+    page.getByRole('heading', { name: 'Prepare referral for specialist review' }),
+  ).toBeVisible()
+  await page.getByRole('button', { name: 'Confirm clinical question' }).click()
+  await page.getByRole('button', { name: 'Query expert directory' }).click()
+  await expect(page.getByRole('heading', { name: 'UMC Utrecht' })).toBeVisible()
+  await page.getByRole('button', { name: 'Select UMC Utrecht' }).click()
+  await page.getByRole('button', { name: 'Query Utrecht requirements' }).click()
+  await expect(page.getByText('Restaging liver MRI')).toBeVisible()
+  await page.getByRole('button', { name: 'Prepare case version 1' }).click()
+  await expect(page.getByRole('heading', { name: 'Case version 1' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Shared after approval' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Remains in Milan' })).toBeVisible()
+  await page.getByRole('button', { name: 'Approve and send case version 1' }).click()
+
+  await expect(page.getByText('Case version 1 approved and sent')).toBeVisible()
+  await expect(
+    page
+      .getByRole('list', { name: 'Referral stages' })
+      .getByRole('listitem')
+      .filter({ hasText: 'Utrecht review' }),
+  ).toHaveAttribute('aria-current', 'step')
+
+  await page.reload()
+  await expect(page.getByText('Case version 1 approved and sent')).toBeVisible()
 })
 
 test('supports keyboard navigation and has no serious accessibility violations', async ({

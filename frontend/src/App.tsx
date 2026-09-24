@@ -59,6 +59,12 @@ interface JourneyActivity {
     | 'patient_selected'
     | 'source_queried'
     | 'source_query_failed'
+    | 'question_confirmed'
+    | 'directory_queried'
+    | 'requirements_queried'
+    | 'destination_selected'
+    | 'package_prepared'
+    | 'package_approved'
   actor: string
   institution: string
   title: string
@@ -92,9 +98,48 @@ interface JourneySnapshot {
   stages: JourneyStage[]
   activity: JourneyActivity[]
   source_checks: SourceCheck[]
+  clinical_question: string | null
+  destinations: {
+    centre_id: string
+    centre_name: string
+    city: string
+    country: string
+    clinician_id: string
+    clinician_name: string
+    score: number
+    reasons: { label: string; detail: string; status: 'match' | 'condition' }[]
+    limitations: string[]
+  }[]
+  selected_centre_id: string | null
+  requirements: {
+    key: string
+    label: string
+    rationale: string
+    status: 'present' | 'missing'
+  }[]
+  package: {
+    case_version: number
+    clinical_question: string
+    centre_name: string
+    clinician_name: string
+    requirements: {
+      key: string
+      label: string
+      rationale: string
+      status: 'present' | 'missing'
+    }[]
+    structured_context: string[]
+    retained_in_milan: string[]
+    provenance_links: number
+    missing_evidence: string[]
+    approved: boolean
+    approved_by: string | null
+    referral_assessment: string | null
+  } | null
+  next_role: JourneyRole | null
 }
 
-type Screen = 'role' | 'patients' | 'selected'
+type Screen = 'role' | 'patients' | 'selected' | 'referral'
 
 async function requestJson<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -121,7 +166,13 @@ function App() {
       .then((restored) => {
         setSnapshot(restored)
         if (restored.active_role === 'milan') {
-          setScreen(restored.selected_patient_id ? 'selected' : 'patients')
+          setScreen(
+            restored.package
+              ? 'referral'
+              : restored.selected_patient_id
+                ? 'selected'
+                : 'patients',
+          )
         }
       })
       .catch((reason: unknown) => {
@@ -152,7 +203,9 @@ function App() {
     const updated = await applyAction({ type: 'enter_role', role })
     if (!updated) return
     if (role === 'milan') {
-      setScreen(updated.selected_patient_id ? 'selected' : 'patients')
+      setScreen(
+        updated.package ? 'referral' : updated.selected_patient_id ? 'selected' : 'patients',
+      )
     } else {
       setNotice('The Utrecht receiving screen is implemented in issue #10.')
     }
@@ -270,6 +323,7 @@ function App() {
                   }
                   if (stage.id === 'patient') setScreen('patients')
                   else if (stage.id === 'local_data') setScreen('selected')
+                  else if (stage.id === 'referral') setScreen('referral')
                   else setNotice(`${stage.label} is implemented in a later increment.`)
                 }}
               >
@@ -319,6 +373,15 @@ function App() {
                 sourceChecks={snapshot.source_checks}
                 busy={busy}
                 onRetry={() => void runSourceChecks(snapshot)}
+                onContinue={() => setScreen('referral')}
+              />
+            )}
+            {screen === 'referral' && selectedPatient && (
+              <ReferralPreparation
+                snapshot={snapshot}
+                patient={selectedPatient}
+                busy={busy}
+                onAction={applyAction}
               />
             )}
           </section>
@@ -494,11 +557,13 @@ function SelectedPatient({
   sourceChecks,
   busy,
   onRetry,
+  onContinue,
 }: {
   patient: JourneyPatient
   sourceChecks: SourceCheck[]
   busy: boolean
   onRetry: () => void
+  onContinue: () => void
 }) {
   const checksComplete =
     sourceChecks.length === sourceDefinitions.length &&
@@ -573,19 +638,286 @@ function SelectedPatient({
         </div>
       </div>
       {checksComplete && (
-        <div className="next-increment-note" role="status">
-          <ShieldCheck size={18} />
-          <span>
-            <strong>Local data check complete</strong>
-            Available and missing evidence will remain visible when the referral package is
-            prepared.
-          </span>
+        <div className="stage-completion">
+          <div className="next-increment-note" role="status">
+            <ShieldCheck size={18} />
+            <span>
+              <strong>Local data check complete</strong>
+              Available and missing evidence remain visible during referral preparation.
+            </span>
+          </div>
+          <button className="primary-action" type="button" disabled={busy} onClick={onContinue}>
+            Confirm referral and destination
+            <ArrowRight size={17} />
+          </button>
         </div>
       )}
       {checkFailed && (
         <button className="secondary-action" type="button" disabled={busy} onClick={onRetry}>
           Retry failed source
         </button>
+      )}
+    </section>
+  )
+}
+
+const defaultReferralQuestion =
+  'Please assess response to conversion therapy and liver resectability.'
+
+const defaultReferralAssessment =
+  'Giulia has liver-limited metastatic colorectal cancer with response after conversion therapy. Please assess resectability and advise the next multidisciplinary step.'
+
+function ReferralPreparation({
+  snapshot,
+  patient,
+  busy,
+  onAction,
+}: {
+  snapshot: JourneySnapshot
+  patient: JourneyPatient
+  busy: boolean
+  onAction: (action: object) => Promise<JourneySnapshot | null>
+}) {
+  const [question, setQuestion] = useState(
+    snapshot.clinical_question ?? defaultReferralQuestion,
+  )
+  const [assessment, setAssessment] = useState(
+    snapshot.package?.referral_assessment ?? defaultReferralAssessment,
+  )
+  const selectedDestination = snapshot.destinations.find(
+    (destination) => destination.centre_id === snapshot.selected_centre_id,
+  )
+
+  return (
+    <section className="referral-preparation screen-stage">
+      <div className="section-heading">
+        <div>
+          <p className="eyebrow">
+            {patient.display_name} · Milan referral
+          </p>
+          <h1>Prepare referral for specialist review</h1>
+        </div>
+        <p>
+          Confirm the clinical question, choose an explainable destination, and approve exactly
+          what crosses to Utrecht.
+        </p>
+      </div>
+
+      <article className="referral-step-card">
+        <span className="step-number">1</span>
+        <div className="step-content">
+          <h2>Clinical question</h2>
+          <label htmlFor="referral-question">Question for the receiving specialist</label>
+          <textarea
+            id="referral-question"
+            value={question}
+            disabled={busy || snapshot.package?.approved}
+            onChange={(event) => setQuestion(event.target.value)}
+          />
+          {!snapshot.clinical_question && (
+            <button
+              className="primary-action"
+              type="button"
+              disabled={busy || question.trim().length < 10}
+              onClick={() =>
+                void onAction({ type: 'confirm_referral_question', question: question.trim() })
+              }
+            >
+              Confirm clinical question
+            </button>
+          )}
+          {snapshot.clinical_question && <p className="confirmed-line"><Check size={16} /> Confirmed by Dr Bianchi</p>}
+        </div>
+      </article>
+
+      {snapshot.clinical_question && (
+        <article className="referral-step-card">
+          <span className="step-number">2</span>
+          <div className="step-content">
+            <h2>Expert destination</h2>
+            {snapshot.destinations.length === 0 ? (
+              <>
+                <p>
+                  Query the bounded synthetic directory for clinical fit, evidence compatibility,
+                  working language, and availability.
+                </p>
+                <button
+                  className="primary-action"
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void onAction({ type: 'query_expert_directory' })}
+                >
+                  Query expert directory
+                </button>
+              </>
+            ) : (
+              <div className="destination-list">
+                {snapshot.destinations.map((destination, index) => (
+                  <article
+                    className={`destination-card ${
+                      destination.centre_id === snapshot.selected_centre_id ? 'selected' : ''
+                    }`}
+                    key={destination.centre_id}
+                  >
+                    <div>
+                      <small>{index === 0 ? 'Best match' : 'Alternative'}</small>
+                      <h3>{destination.centre_name}</h3>
+                      <p>
+                        {destination.city}, {destination.country} · {destination.clinician_name}
+                      </p>
+                    </div>
+                    <strong>{destination.score} match points</strong>
+                    <ul>
+                      {destination.reasons.slice(0, 3).map((reason) => (
+                        <li key={reason.label}>
+                          <Check size={14} />
+                          <span>
+                            <strong>{reason.label}</strong>
+                            {reason.detail}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                    <button
+                      className={
+                        destination.centre_id === snapshot.selected_centre_id
+                          ? 'secondary-action'
+                          : 'primary-action'
+                      }
+                      type="button"
+                      disabled={busy || snapshot.package?.approved}
+                      onClick={() =>
+                        void onAction({
+                          type: 'select_destination',
+                          centre_id: destination.centre_id,
+                          clinician_id: destination.clinician_id,
+                        })
+                      }
+                    >
+                      {destination.centre_id === snapshot.selected_centre_id
+                        ? 'Destination selected'
+                        : `Select ${destination.centre_name}`}
+                    </button>
+                  </article>
+                ))}
+                <p className="directory-limit">
+                  {snapshot.destinations[0].limitations[0]}
+                </p>
+              </div>
+            )}
+          </div>
+        </article>
+      )}
+
+      {selectedDestination && (
+        <article className="referral-step-card">
+          <span className="step-number">3</span>
+          <div className="step-content">
+            <h2>Utrecht referral requirements</h2>
+            {snapshot.requirements.length === 0 ? (
+              <button
+                className="primary-action"
+                type="button"
+                disabled={busy}
+                onClick={() => void onAction({ type: 'query_requirements' })}
+              >
+                Query Utrecht requirements
+              </button>
+            ) : (
+              <>
+                <div className="requirement-list">
+                  {snapshot.requirements.map((requirement) => (
+                    <div className={`requirement ${requirement.status}`} key={requirement.key}>
+                      {requirement.status === 'present' ? (
+                        <Check size={16} />
+                      ) : (
+                        <CircleAlert size={16} />
+                      )}
+                      <span>
+                        <strong>{requirement.label}</strong>
+                        <small>{requirement.rationale}</small>
+                      </span>
+                      <em>{requirement.status === 'present' ? 'Present' : 'Missing'}</em>
+                    </div>
+                  ))}
+                </div>
+                {!snapshot.package && (
+                  <button
+                    className="primary-action"
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void onAction({ type: 'prepare_referral_package' })}
+                  >
+                    Prepare case version 1
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </article>
+      )}
+
+      {snapshot.package && (
+        <article className="referral-step-card package-card">
+          <span className="step-number">4</span>
+          <div className="step-content">
+            <div className="package-heading">
+              <div>
+                <h2>Case version {snapshot.package.case_version}</h2>
+                <p>
+                  For {snapshot.package.clinician_name} at {snapshot.package.centre_name}
+                </p>
+              </div>
+              <span>{snapshot.package.provenance_links} provenance links</span>
+            </div>
+            <div className="sharing-boundary">
+              <div>
+                <h3>Shared after approval</h3>
+                <ul>
+                  {snapshot.package.structured_context.map((item) => <li key={item}>{item}</li>)}
+                </ul>
+              </div>
+              <div>
+                <h3>Remains in Milan</h3>
+                <ul>
+                  {snapshot.package.retained_in_milan.map((item) => <li key={item}>{item}</li>)}
+                </ul>
+                <p>Original files can be retrieved later through authorized hospital access.</p>
+              </div>
+            </div>
+            <label htmlFor="referral-assessment">Dr Bianchi's referral assessment</label>
+            <textarea
+              id="referral-assessment"
+              value={assessment}
+              disabled={busy || snapshot.package.approved}
+              onChange={(event) => setAssessment(event.target.value)}
+            />
+            {snapshot.package.approved ? (
+              <div className="sent-confirmation" role="status">
+                <ShieldCheck size={20} />
+                <span>
+                  <strong>Case version 1 approved and sent</strong>
+                  Utrecht is now the next clinical workspace.
+                </span>
+              </div>
+            ) : (
+              <button
+                className="primary-action"
+                type="button"
+                disabled={busy || assessment.trim().length < 20}
+                onClick={() =>
+                  void onAction({
+                    type: 'approve_referral_package',
+                    referral_assessment: assessment.trim(),
+                  })
+                }
+              >
+                Approve and send case version 1
+                <ArrowRight size={17} />
+              </button>
+            )}
+          </div>
+        </article>
       )}
     </section>
   )

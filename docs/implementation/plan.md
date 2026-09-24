@@ -206,6 +206,8 @@ adapters and understands what data exists without seeing a centralized import.
 
 #### INC-010: Expert destination and approved referral package
 
+**Status:** Complete
+
 **Depends on:** INC-009.
 
 **Outcome:** Dr Bianchi confirms the question, selects Utrecht from bounded
@@ -231,6 +233,23 @@ approves case version 1 for sharing.
   file.
 - Sending requires an explicit Milan approval.
 - Refresh restores the sent case version and next role.
+
+**Validation evidence:**
+
+- The journey confirms Dr Bianchi's clinical question before querying the
+  bounded expert directory, and Utrecht is the highest explainable match rather
+  than a direct navigation target.
+- Utrecht requirements are queried after destination selection and remain
+  visibly present or missing in clinical language.
+- The existing referral and case-preparation modules produce immutable case
+  version 1 with source provenance.
+- The package screen distinguishes structured context and provenance shared
+  after approval from original records and imaging retained in Milan.
+- Dr Bianchi's referral assessment is persisted separately, and only his
+  explicit approval makes Utrecht available as the next workspace.
+- The complete 55-test backend suite, strict mypy, Ruff, five Vitest tests,
+  frontend lint/build, and four desktop/mobile Playwright checks pass; the
+  browser flow also restores the approved package after refresh.
 
 #### INC-011: Utrecht receiving review and evidence request
 

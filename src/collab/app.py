@@ -308,6 +308,9 @@ def create_app(
     referral_journey = ReferralJourney(
         store,
         local_milan_sources(configured_fixture_root / "milan"),
+        directory,
+        referral_service,
+        preparation_service,
     )
 
     if configured_runtime_mode == "azure":

@@ -4,25 +4,43 @@ from collections.abc import Mapping
 from typing import Literal
 from uuid import uuid4
 
+from collab.directory import ExpertDiscovery
 from collab.federation import FederatedPatientSource, FederatedSourceError
 from collab.models import (
+    ApproveReferralPackageAction,
+    ClinicalNeed,
+    ConfirmReferralQuestionAction,
     DemoState,
     EnterRoleAction,
     FederatedSourceId,
     JourneyActivity,
+    JourneyDestinationView,
+    JourneyMatchReasonView,
     JourneyPatientView,
+    JourneyRequirementView,
     JourneyRole,
     JourneyRoleView,
     JourneyStageId,
     JourneyStageView,
+    PrepareReferralPackageAction,
+    QueryExpertDirectoryAction,
+    QueryRequirementsAction,
     QuerySourceAction,
+    ReferralCreate,
     ReferralJourneyAction,
     ReferralJourneySnapshot,
+    ReferralPackageView,
+    ReferralSender,
+    RequirementStatus,
+    SelectDestinationAction,
     SelectPatientAction,
     SourceCheckResult,
+    Urgency,
     utc_now,
 )
 from collab.persistence import StateStore
+from collab.preparation import CasePreparationService, PreparationError
+from collab.referrals import ReferralError, ReferralService
 
 
 class ReferralJourneyError(ValueError):
@@ -34,9 +52,15 @@ class ReferralJourney:
         self,
         store: StateStore,
         sources: Mapping[FederatedSourceId, FederatedPatientSource] | None = None,
+        directory: ExpertDiscovery | None = None,
+        referral_service: ReferralService | None = None,
+        preparation_service: CasePreparationService | None = None,
     ) -> None:
         self._store = store
         self._sources = dict(sources or {})
+        self._directory = directory
+        self._referral_service = referral_service
+        self._preparation_service = preparation_service
 
     def snapshot(self) -> ReferralJourneySnapshot:
         return self._snapshot(self._store.load())
@@ -50,6 +74,18 @@ class ReferralJourney:
                 next_state = self._select_patient(state, action)
             elif isinstance(action, QuerySourceAction):
                 next_state = self._query_source(state, action)
+            elif isinstance(action, ConfirmReferralQuestionAction):
+                next_state = self._confirm_question(state, action)
+            elif isinstance(action, QueryExpertDirectoryAction):
+                next_state = self._query_directory(state)
+            elif isinstance(action, SelectDestinationAction):
+                next_state = self._select_destination(state, action)
+            elif isinstance(action, QueryRequirementsAction):
+                next_state = self._query_requirements(state)
+            elif isinstance(action, PrepareReferralPackageAction):
+                next_state = self._prepare_package(state)
+            elif isinstance(action, ApproveReferralPackageAction):
+                next_state = self._approve_package(state, action)
             else:
                 raise ReferralJourneyError("Unsupported referral journey action.")
             self._store.save(next_state)
@@ -145,6 +181,297 @@ class ReferralJourney:
         )
         return state.model_copy(update={"referral_journey": next_journey})
 
+    def _confirm_question(
+        self,
+        state: DemoState,
+        action: ConfirmReferralQuestionAction,
+    ) -> DemoState:
+        self._require_milan_referral_stage(state)
+        question = action.question.strip()
+        if state.referral_journey.clinical_question == question:
+            return state
+        journey = state.referral_journey.model_copy(
+            update={
+                "clinical_question": question,
+                "destinations": [],
+                "selected_centre_id": None,
+                "requirements": [],
+                "package": None,
+                "activity": [
+                    *state.referral_journey.activity,
+                    self._activity(
+                        "question_confirmed",
+                        "Dr Luca Bianchi",
+                        "Confirmed the referral question",
+                        question,
+                    ),
+                ],
+            }
+        )
+        return state.model_copy(
+            update={
+                "referral_journey": journey,
+                "pending_referral": None,
+                "pending_prepared_case": None,
+            }
+        )
+
+    def _query_directory(self, state: DemoState) -> DemoState:
+        self._require_milan_referral_stage(state)
+        if state.referral_journey.clinical_question is None:
+            raise ReferralJourneyError("Confirm the referral question first.")
+        if self._directory is None:
+            raise ReferralJourneyError("The expert directory is not configured.")
+        response = self._directory.find_matches(
+            self._clinical_need(state.referral_journey.clinical_question)
+        )
+        destinations = [
+            JourneyDestinationView(
+                centre_id=match.centre.id,
+                centre_name=match.centre.name,
+                city=match.centre.city,
+                country=match.centre.country,
+                clinician_id=next(
+                    clinician.id for clinician in match.centre.clinicians if clinician.eligible
+                ),
+                clinician_name=next(
+                    clinician.name for clinician in match.centre.clinicians if clinician.eligible
+                ),
+                score=match.score,
+                reasons=[
+                    JourneyMatchReasonView(
+                        label=reason.label,
+                        detail=reason.detail,
+                        status=reason.status.value,
+                    )
+                    for reason in match.reasons
+                ],
+                limitations=response.limitations,
+            )
+            for match in response.matches
+            if any(clinician.eligible for clinician in match.centre.clinicians)
+        ]
+        journey = state.referral_journey.model_copy(
+            update={
+                "destinations": destinations,
+                "activity": [
+                    *state.referral_journey.activity,
+                    self._activity(
+                        "directory_queried",
+                        "European Oncology Exchange",
+                        "Queried the synthetic expert directory",
+                        f"{len(destinations)} bounded destination matches returned.",
+                    ),
+                ],
+            }
+        )
+        return state.model_copy(update={"referral_journey": journey})
+
+    def _select_destination(
+        self,
+        state: DemoState,
+        action: SelectDestinationAction,
+    ) -> DemoState:
+        self._require_milan_referral_stage(state)
+        destination = next(
+            (
+                item
+                for item in state.referral_journey.destinations
+                if item.centre_id == action.centre_id
+                and item.clinician_id == action.clinician_id
+            ),
+            None,
+        )
+        if destination is None:
+            raise ReferralJourneyError("Query the directory before selecting this destination.")
+        journey = state.referral_journey.model_copy(
+            update={
+                "selected_centre_id": destination.centre_id,
+                "requirements": [],
+                "package": None,
+                "activity": [
+                    *state.referral_journey.activity,
+                    self._activity(
+                        "destination_selected",
+                        "Dr Luca Bianchi",
+                        f"Selected {destination.centre_name}",
+                        f"{destination.clinician_name} will receive the approved referral.",
+                    ),
+                ],
+            }
+        )
+        return state.model_copy(
+            update={
+                "referral_journey": journey,
+                "pending_referral": None,
+                "pending_prepared_case": None,
+            }
+        )
+
+    def _query_requirements(self, state: DemoState) -> DemoState:
+        self._require_milan_referral_stage(state)
+        centre_id = state.referral_journey.selected_centre_id
+        if centre_id is None:
+            raise ReferralJourneyError("Select the referral destination first.")
+        if self._directory is None:
+            raise ReferralJourneyError("The destination requirements adapter is not configured.")
+        definitions = self._directory.get_requirements(centre_id)
+        if not definitions:
+            raise ReferralJourneyError("No referral requirements were found for this centre.")
+        available = set(self._clinical_need("").available_evidence)
+        requirements = [
+            JourneyRequirementView(
+                key=item.key,
+                label=item.label,
+                rationale=item.rationale,
+                status=(
+                    RequirementStatus.PRESENT.value
+                    if item.evidence_type in available
+                    else RequirementStatus.MISSING.value
+                ),
+            )
+            for item in definitions
+        ]
+        journey = state.referral_journey.model_copy(
+            update={
+                "requirements": requirements,
+                "activity": [
+                    *state.referral_journey.activity,
+                    self._activity(
+                        "requirements_queried",
+                        "European Oncology Exchange",
+                        "Queried Utrecht referral requirements",
+                        (
+                            f"{sum(item.status == 'present' for item in requirements)} of "
+                            f"{len(requirements)} requirements are currently present."
+                        ),
+                    ),
+                ],
+            }
+        )
+        return state.model_copy(update={"referral_journey": journey})
+
+    def _prepare_package(self, state: DemoState) -> DemoState:
+        self._require_milan_referral_stage(state)
+        journey = state.referral_journey
+        if journey.clinical_question is None:
+            raise ReferralJourneyError("Confirm the referral question first.")
+        if journey.selected_centre_id is None or not journey.requirements:
+            raise ReferralJourneyError("Select Utrecht and query its requirements first.")
+        destination = next(
+            item for item in journey.destinations if item.centre_id == journey.selected_centre_id
+        )
+        if self._referral_service is None or self._preparation_service is None:
+            raise ReferralJourneyError("Referral package preparation is not configured.")
+        try:
+            referral = self._referral_service.create(
+                ReferralCreate(
+                    need=self._clinical_need(journey.clinical_question),
+                    centre_id=destination.centre_id,
+                    clinician_id=destination.clinician_id,
+                    urgency=Urgency.EXPEDITED,
+                    sender=ReferralSender(
+                        clinician_name="Dr Luca Bianchi",
+                        institution="Istituto Nazionale dei Tumori, Milan",
+                        country="Italy",
+                    ),
+                )
+            )
+            prepared = self._preparation_service.prepare(referral)
+        except (ReferralError, PreparationError) as error:
+            raise ReferralJourneyError(str(error)) from error
+        package = ReferralPackageView(
+            case_version=prepared.version,
+            clinical_question=prepared.clinical_question,
+            centre_name=destination.centre_name,
+            clinician_name=destination.clinician_name,
+            requirements=journey.requirements,
+            structured_context=[
+                "Referral question and clinical summary",
+                "Treatment and response timeline",
+                "Evidence inventory and source provenance",
+                "Available pathology and imaging summaries",
+            ],
+            retained_in_milan=[
+                "Original pathology document",
+                "Original CT and MRI image files",
+                "Milan electronic health record",
+            ],
+            provenance_links=sum(len(claim.provenance) for claim in prepared.claims),
+            missing_evidence=[
+                item.label for item in journey.requirements if item.status == "missing"
+            ],
+        )
+        next_journey = journey.model_copy(
+            update={
+                "package": package,
+                "activity": [
+                    *journey.activity,
+                    self._activity(
+                        "package_prepared",
+                        "European Oncology Exchange",
+                        "Prepared case version 1",
+                        (
+                            "Structured context and provenance are ready for approval; "
+                            "original source files remain in Milan."
+                        ),
+                    ),
+                ],
+            }
+        )
+        return state.model_copy(
+            update={
+                "referral_journey": next_journey,
+                "pending_referral": referral,
+                "pending_prepared_case": prepared,
+            }
+        )
+
+    def _approve_package(
+        self,
+        state: DemoState,
+        action: ApproveReferralPackageAction,
+    ) -> DemoState:
+        self._require_milan_referral_stage(state)
+        journey = state.referral_journey
+        if journey.package is None or state.pending_referral is None:
+            raise ReferralJourneyError("Prepare case version 1 before approving it.")
+        if state.pending_prepared_case is None:
+            raise ReferralJourneyError("The prepared case is not available.")
+        assessment = action.referral_assessment.strip()
+        package = journey.package.model_copy(
+            update={
+                "approved": True,
+                "approved_by": "Dr Luca Bianchi",
+                "referral_assessment": assessment,
+            }
+        )
+        next_journey = journey.model_copy(
+            update={
+                "package": package,
+                "current_stage": JourneyStageId.UTRECHT_REVIEW,
+                "activity": [
+                    *journey.activity,
+                    self._activity(
+                        "package_approved",
+                        "Dr Luca Bianchi",
+                        "Approved and sent case version 1",
+                        "Utrecht can now acknowledge the source-linked referral package.",
+                    ),
+                ],
+            }
+        )
+        return state.model_copy(
+            update={
+                "referral_journey": next_journey,
+                "current_referral": state.pending_referral,
+                "current_prepared_case": state.pending_prepared_case,
+                "prepared_case_versions": [state.pending_prepared_case],
+                "pending_referral": None,
+                "pending_prepared_case": None,
+            }
+        )
+
     def _select_patient(
         self,
         state: DemoState,
@@ -229,6 +556,12 @@ class ReferralJourney:
                 for source_id in FederatedSourceId
                 if source_id in state.referral_journey.source_checks
             ],
+            clinical_question=state.referral_journey.clinical_question,
+            destinations=state.referral_journey.destinations,
+            selected_centre_id=state.referral_journey.selected_centre_id,
+            requirements=state.referral_journey.requirements,
+            package=state.referral_journey.package,
+            next_role=JourneyRole.UTRECHT if state.current_referral is not None else None,
         )
 
     def _stages(self, state: DemoState) -> list[JourneyStageView]:
@@ -286,8 +619,44 @@ class ReferralJourney:
         if state.current_prepared_case and state.current_prepared_case.version > 1:
             return JourneyStageId.EVIDENCE_UPDATE
         if state.current_referral is not None:
-            return JourneyStageId.REFERRAL
+            return JourneyStageId.UTRECHT_REVIEW
         return state.referral_journey.current_stage
+
+    def _require_milan_referral_stage(self, state: DemoState) -> None:
+        journey = state.referral_journey
+        if journey.active_role != JourneyRole.MILAN:
+            raise ReferralJourneyError("Open the Milan workspace first.")
+        if not self._source_checks_complete(journey.source_checks):
+            raise ReferralJourneyError("Complete the Milan data check first.")
+
+    def _clinical_need(self, question: str) -> ClinicalNeed:
+        return ClinicalNeed(
+            decision_focus=question or "Conversion therapy and liver-metastasis resectability"
+        )
+
+    def _activity(
+        self,
+        kind: Literal[
+            "question_confirmed",
+            "directory_queried",
+            "requirements_queried",
+            "destination_selected",
+            "package_prepared",
+            "package_approved",
+        ],
+        actor: str,
+        title: str,
+        detail: str,
+    ) -> JourneyActivity:
+        return JourneyActivity(
+            id=f"ACT-{uuid4().hex[:10].upper()}",
+            kind=kind,
+            actor=actor,
+            institution="Istituto Nazionale dei Tumori, Milan",
+            title=title,
+            detail=detail,
+            occurred_at=utc_now(),
+        )
 
     def _source_checks_complete(
         self,

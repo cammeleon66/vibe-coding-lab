@@ -408,6 +408,257 @@
   margin-bottom: 3px;
 }
 
+.stage-completion {
+  margin-top: 24px;
+  display: flex;
+  gap: 14px;
+  align-items: stretch;
+  justify-content: space-between;
+}
+
+.stage-completion .next-increment-note {
+  margin-top: 0;
+  flex: 1;
+}
+
+.referral-preparation {
+  display: grid;
+  gap: 18px;
+}
+
+.referral-step-card {
+  padding: 24px;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 18px;
+  border: 1px solid var(--line);
+  background: var(--white);
+}
+
+.step-number {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  color: var(--white);
+  background: var(--blue-deep);
+  font-size: 0.75rem;
+  font-weight: 850;
+}
+
+.step-content h2,
+.step-content h3 {
+  margin-top: 0;
+}
+
+.step-content > label {
+  margin: 18px 0 7px;
+  display: block;
+  color: var(--ink-soft);
+  font-size: 0.72rem;
+  font-weight: 850;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.step-content textarea {
+  width: 100%;
+  min-height: 100px;
+  padding: 13px 14px;
+  resize: vertical;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  background: var(--paper);
+  font: inherit;
+  line-height: 1.5;
+}
+
+.step-content > .primary-action {
+  margin-top: 14px;
+}
+
+.confirmed-line {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  color: var(--success);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.destination-list {
+  display: grid;
+  gap: 14px;
+}
+
+.destination-card {
+  padding: 18px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px 20px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+}
+
+.destination-card.selected {
+  border-color: rgba(36, 119, 95, 0.5);
+  box-shadow: inset 3px 0 var(--success);
+}
+
+.destination-card > strong,
+.destination-card small {
+  color: var(--blue-deep);
+  font-size: 0.7rem;
+  font-weight: 850;
+}
+
+.destination-card h3 {
+  margin: 4px 0;
+}
+
+.destination-card p {
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+.destination-card ul {
+  margin: 4px 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  grid-column: 1 / -1;
+  list-style: none;
+}
+
+.destination-card li {
+  display: flex;
+  gap: 8px;
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+}
+
+.destination-card li svg {
+  flex: 0 0 auto;
+  color: var(--success);
+}
+
+.destination-card li strong {
+  margin-right: 6px;
+  color: var(--ink);
+}
+
+.destination-card button {
+  grid-column: 1 / -1;
+  justify-self: start;
+}
+
+.directory-limit {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.75rem;
+}
+
+.requirement-list {
+  margin-bottom: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.requirement {
+  padding: 13px 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+}
+
+.requirement.present svg {
+  color: var(--success);
+}
+
+.requirement.missing svg,
+.requirement.missing em {
+  color: var(--warning);
+}
+
+.requirement span strong,
+.requirement span small {
+  display: block;
+}
+
+.requirement span small {
+  margin-top: 3px;
+  color: var(--ink-soft);
+}
+
+.requirement em {
+  font-size: 0.68rem;
+  font-style: normal;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.package-heading {
+  display: flex;
+  gap: 16px;
+  align-items: start;
+  justify-content: space-between;
+}
+
+.package-heading p {
+  color: var(--ink-soft);
+}
+
+.package-heading > span {
+  padding: 6px 9px;
+  color: var(--blue-deep);
+  border: 1px solid rgba(23, 79, 138, 0.3);
+  font-size: 0.68rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.sharing-boundary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border: 1px solid var(--line);
+}
+
+.sharing-boundary > div {
+  padding: 18px;
+}
+
+.sharing-boundary > div + div {
+  border-left: 1px solid var(--line);
+  background: var(--paper);
+}
+
+.sharing-boundary ul {
+  padding-left: 18px;
+  color: var(--ink-soft);
+  line-height: 1.7;
+}
+
+.sharing-boundary p {
+  color: var(--ink-soft);
+  font-size: 0.75rem;
+}
+
+.sent-confirmation {
+  margin-top: 16px;
+  padding: 16px;
+  display: flex;
+  gap: 10px;
+  color: var(--success);
+  border: 1px solid rgba(36, 119, 95, 0.32);
+  background: rgba(36, 119, 95, 0.07);
+}
+
+.sent-confirmation strong {
+  display: block;
+  margin-bottom: 3px;
+}
+
 .activity-timeline {
   max-height: calc(100vh - 180px);
   position: sticky;
@@ -517,6 +768,21 @@
 
   .journey-app .journey-step {
     border-bottom: 1px solid var(--line);
+  }
+
+  .stage-completion,
+  .package-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .sharing-boundary {
+    grid-template-columns: 1fr;
+  }
+
+  .sharing-boundary > div + div {
+    border-top: 1px solid var(--line);
+    border-left: 0;
   }
 
   .role-card-grid {

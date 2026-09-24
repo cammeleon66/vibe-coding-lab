@@ -11,6 +11,7 @@ from collab.models import (
     MatchReason,
     MatchResponse,
     MatchStatus,
+    ReferralRequirementDefinition,
 )
 
 
@@ -18,6 +19,8 @@ class ExpertDiscovery(Protocol):
     def find_matches(self, need: ClinicalNeed) -> MatchResponse: ...
 
     def get_centre(self, centre_id: str) -> ExpertCentre | None: ...
+
+    def get_requirements(self, centre_id: str) -> list[ReferralRequirementDefinition]: ...
 
 
 class SyntheticExpertDirectory:
@@ -28,6 +31,10 @@ class SyntheticExpertDirectory:
 
     def get_centre(self, centre_id: str) -> ExpertCentre | None:
         return next((centre for centre in self._centres if centre.id == centre_id), None)
+
+    def get_requirements(self, centre_id: str) -> list[ReferralRequirementDefinition]:
+        centre = self.get_centre(centre_id)
+        return [] if centre is None else centre.requirements
 
     def find_matches(self, need: ClinicalNeed) -> MatchResponse:
         matches = [self._score(centre, need) for centre in self._centres]

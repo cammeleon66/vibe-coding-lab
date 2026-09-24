@@ -110,6 +110,12 @@ const initialSnapshot = {
   ],
   activity: [],
   source_checks: [],
+  clinical_question: null,
+  destinations: [],
+  selected_centre_id: null,
+  requirements: [],
+  package: null,
+  next_role: null,
 }
 
 const milanSnapshot = {
