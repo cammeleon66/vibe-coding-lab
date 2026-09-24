@@ -113,6 +113,24 @@ class EvidenceRequestView(BaseModel):
     requested_at: datetime
 
 
+class MdoOutcomeView(BaseModel):
+    case_version: int
+    specialist: str
+    final_opinion: str
+    scheduled_for: str
+    accepted_at: datetime
+    next_responsible_actor: str
+    next_action: str
+
+
+class EvidenceUpdateView(BaseModel):
+    case_version: int
+    previous_version: int
+    added_evidence: list[str]
+    changed_findings: list[str]
+    remaining_uncertainty: list[str]
+
+
 class JourneyActivity(BaseModel):
     id: str
     kind: Literal[
@@ -129,6 +147,10 @@ class JourneyActivity(BaseModel):
         "version_acknowledged",
         "provisional_opinion_recorded",
         "evidence_requested",
+        "evidence_update_received",
+        "evidence_update_approved",
+        "final_opinion_recorded",
+        "mdo_accepted",
     ]
     actor: str
     institution: str
@@ -151,6 +173,10 @@ class ReferralJourneyState(BaseModel):
     acknowledged_versions: list[int] = Field(default_factory=list)
     provisional_opinion: str | None = None
     evidence_request: EvidenceRequestView | None = None
+    update_available_version: int | None = None
+    update_approved_versions: list[int] = Field(default_factory=list)
+    final_opinion: str | None = None
+    mdo_outcome: MdoOutcomeView | None = None
 
 
 class JourneyRoleView(BaseModel):
@@ -200,6 +226,11 @@ class ReferralJourneySnapshot(BaseModel):
     acknowledged_versions: list[int]
     provisional_opinion: str | None
     evidence_request: EvidenceRequestView | None
+    update_available_version: int | None
+    update_approved_versions: list[int]
+    final_opinion: str | None
+    mdo_outcome: MdoOutcomeView | None
+    evidence_update: EvidenceUpdateView | None
 
 
 class EnterRoleAction(BaseModel):
@@ -261,6 +292,28 @@ class RequestEvidenceAction(BaseModel):
     clinical_reason: str = Field(min_length=20, max_length=1000)
 
 
+class ReceiveEvidenceUpdateAction(BaseModel):
+    type: Literal["receive_evidence_update"] = "receive_evidence_update"
+    event_id: str = Field(min_length=1)
+    occurred_at: datetime
+
+
+class ApproveEvidenceUpdateAction(BaseModel):
+    type: Literal["approve_evidence_update"] = "approve_evidence_update"
+    case_version: int = Field(ge=2)
+
+
+class RecordFinalOpinionAction(BaseModel):
+    type: Literal["record_final_opinion"] = "record_final_opinion"
+    opinion: str = Field(min_length=20, max_length=2000)
+
+
+class AcceptMdoOutcomeAction(BaseModel):
+    type: Literal["accept_mdo_outcome"] = "accept_mdo_outcome"
+    scheduled_for: str = Field(min_length=5, max_length=100)
+    next_action: str = Field(min_length=10, max_length=500)
+
+
 ReferralJourneyAction = Annotated[
     EnterRoleAction
     | SelectPatientAction
@@ -273,7 +326,11 @@ ReferralJourneyAction = Annotated[
     | ApproveReferralPackageAction
     | AcknowledgeCaseVersionAction
     | RecordProvisionalOpinionAction
-    | RequestEvidenceAction,
+    | RequestEvidenceAction
+    | ReceiveEvidenceUpdateAction
+    | ApproveEvidenceUpdateAction
+    | RecordFinalOpinionAction
+    | AcceptMdoOutcomeAction,
     Field(discriminator="type"),
 ]
 

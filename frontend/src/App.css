@@ -767,6 +767,82 @@
   font-weight: 750;
 }
 
+.evidence-update-screen,
+.mdo-review-screen {
+  display: grid;
+  gap: 18px;
+}
+
+.source-arrival-card code {
+  padding: 10px 12px;
+  display: block;
+  color: var(--blue-deep);
+  background: var(--paper);
+  font-size: 0.75rem;
+}
+
+.update-delta-card h3 {
+  margin: 20px 0 8px;
+  color: var(--ink-soft);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.update-delta-card ul {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--ink-soft);
+  line-height: 1.6;
+}
+
+.outcome-card {
+  padding: clamp(26px, 4vw, 44px);
+  border: 1px solid rgba(36, 119, 95, 0.42);
+  background: var(--white);
+  box-shadow: inset 5px 0 var(--success), 0 18px 45px rgba(16, 36, 61, 0.08);
+}
+
+.outcome-status {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  color: var(--success);
+  font-size: 0.74rem;
+  font-weight: 850;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.outcome-card h2 {
+  margin: 14px 0 24px;
+  font-size: 2rem;
+}
+
+.outcome-card dl {
+  margin: 0;
+}
+
+.outcome-card dl div {
+  padding: 18px 0;
+  border-top: 1px solid var(--line);
+}
+
+.outcome-card dt {
+  margin-bottom: 7px;
+  color: var(--ink-soft);
+  font-size: 0.7rem;
+  font-weight: 850;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.outcome-card dd {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
 .activity-timeline {
   max-height: calc(100vh - 180px);
   position: sticky;

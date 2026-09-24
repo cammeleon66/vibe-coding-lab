@@ -88,8 +88,35 @@ test('prepares and approves the Milan referral package', async ({ page }) => {
       .filter({ hasText: 'Evidence update' }),
   ).toHaveAttribute('aria-current', 'step')
 
+  await page.getByRole('button', { name: 'Continue as Dr Luca Bianchi' }).click()
+  await expect(
+    page.getByRole('heading', { name: 'Review requested imaging update' }),
+  ).toBeVisible()
+  await page.getByRole('button', { name: 'Receive requested imaging' }).click()
+  await expect(page.getByRole('heading', { name: 'Case version 2' })).toBeVisible()
+  await expect(page.getByText('Baseline imaging')).toBeVisible()
+  await page.getByRole('button', { name: 'Approve sharing case version 2' }).click()
+  await expect(page.getByText('Case version 2 approved')).toBeVisible()
+  await page.getByRole('button', { name: 'Continue as Dr Eva van Dijk' }).click()
+  await expect(page.getByRole('heading', { name: 'Complete specialist review' })).toBeVisible()
+  await page.getByRole('button', { name: 'Acknowledge case version 2' }).click()
+  await page.getByRole('button', { name: 'Record final specialist opinion' }).click()
+  await page.getByRole('button', { name: 'Accept case version 2 into MDO' }).click()
+  await expect(page.getByText('Accepted into Utrecht MDO')).toBeVisible()
+  await page.getByRole('button', { name: 'Return outcome to Dr Luca Bianchi' }).click()
+  await expect(page.getByRole('heading', { name: 'Utrecht outcome received' })).toBeVisible()
+  await expect(
+    page.getByText('29 September 2026 at 14:00 CEST', { exact: true }),
+  ).toBeVisible()
+  await expect(
+    page
+      .getByRole('list', { name: 'Referral stages' })
+      .getByRole('listitem')
+      .filter({ hasText: 'MDO outcome' }),
+  ).toHaveAttribute('aria-current', 'step')
+
   await page.reload()
-  await expect(page.getByText('Imaging request sent to Milan')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Utrecht outcome received' })).toBeVisible()
 })
 
 test('supports keyboard navigation and has no serious accessibility violations', async ({

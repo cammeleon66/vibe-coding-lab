@@ -68,6 +68,10 @@ interface JourneyActivity {
     | 'version_acknowledged'
     | 'provisional_opinion_recorded'
     | 'evidence_requested'
+    | 'evidence_update_received'
+    | 'evidence_update_approved'
+    | 'final_opinion_recorded'
+    | 'mdo_accepted'
   actor: string
   institution: string
   title: string
@@ -149,9 +153,36 @@ interface JourneySnapshot {
     requested_by: string
     requested_at: string
   } | null
+  update_available_version: number | null
+  update_approved_versions: number[]
+  final_opinion: string | null
+  mdo_outcome: {
+    case_version: number
+    specialist: string
+    final_opinion: string
+    scheduled_for: string
+    accepted_at: string
+    next_responsible_actor: string
+    next_action: string
+  } | null
+  evidence_update: {
+    case_version: number
+    previous_version: number
+    added_evidence: string[]
+    changed_findings: string[]
+    remaining_uncertainty: string[]
+  } | null
 }
 
-type Screen = 'role' | 'patients' | 'selected' | 'referral' | 'utrecht'
+type Screen =
+  | 'role'
+  | 'patients'
+  | 'selected'
+  | 'referral'
+  | 'utrecht'
+  | 'evidence_update'
+  | 'mdo'
+  | 'outcome'
 
 async function requestJson<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -179,14 +210,18 @@ function App() {
         setSnapshot(restored)
         if (restored.active_role === 'milan') {
           setScreen(
-            restored.package
+            restored.mdo_outcome
+              ? 'outcome'
+              : restored.evidence_request
+                ? 'evidence_update'
+                : restored.package
               ? 'referral'
               : restored.selected_patient_id
                 ? 'selected'
                 : 'patients',
           )
         } else if (restored.active_role === 'utrecht') {
-          setScreen('utrecht')
+          setScreen(restored.update_approved_versions.length > 0 ? 'mdo' : 'utrecht')
         }
       })
       .catch((reason: unknown) => {
@@ -218,10 +253,18 @@ function App() {
     if (!updated) return
     if (role === 'milan') {
       setScreen(
-        updated.package ? 'referral' : updated.selected_patient_id ? 'selected' : 'patients',
+        updated.mdo_outcome
+          ? 'outcome'
+          : updated.evidence_request
+            ? 'evidence_update'
+            : updated.package
+              ? 'referral'
+              : updated.selected_patient_id
+                ? 'selected'
+                : 'patients',
       )
     } else {
-      setScreen('utrecht')
+      setScreen(updated.update_approved_versions.length > 0 ? 'mdo' : 'utrecht')
     }
   }
 
@@ -274,6 +317,28 @@ function App() {
       setNotice('The synthetic referral journey has been reset.')
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'The journey could not be reset.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function receiveEvidenceUpdate() {
+    setBusy(true)
+    setError(null)
+    try {
+      await requestJson('/api/evidence-arrivals', {
+        method: 'POST',
+        body: JSON.stringify({
+          event_id: 'journey-imaging-001',
+          occurred_at: new Date().toISOString(),
+        }),
+      })
+      const updated = await requestJson<JourneySnapshot>('/api/journey')
+      setSnapshot(updated)
+    } catch (reason) {
+      setError(
+        reason instanceof Error ? reason.message : 'The imaging update could not be received.',
+      )
     } finally {
       setBusy(false)
     }
@@ -339,6 +404,10 @@ function App() {
                   else if (stage.id === 'local_data') setScreen('selected')
                   else if (stage.id === 'referral') setScreen('referral')
                   else if (stage.id === 'utrecht_review') setScreen('utrecht')
+                  else if (stage.id === 'evidence_update') setScreen('evidence_update')
+                  else if (stage.id === 'mdo_outcome') {
+                    setScreen(snapshot.mdo_outcome ? 'outcome' : 'mdo')
+                  }
                   else setNotice(`${stage.label} is implemented in a later increment.`)
                 }}
               >
@@ -406,7 +475,30 @@ function App() {
                 patient={selectedPatient}
                 busy={busy}
                 onAction={applyAction}
+                onReturnMilan={() => void enterRole('milan')}
               />
+            )}
+            {screen === 'evidence_update' && selectedPatient && (
+              <EvidenceUpdate
+                snapshot={snapshot}
+                patient={selectedPatient}
+                busy={busy}
+                onAction={applyAction}
+                onReceive={receiveEvidenceUpdate}
+                onOpenUtrecht={() => void enterRole('utrecht')}
+              />
+            )}
+            {screen === 'mdo' && selectedPatient && (
+              <MdoReview
+                snapshot={snapshot}
+                patient={selectedPatient}
+                busy={busy}
+                onAction={applyAction}
+                onReturnMilan={() => void enterRole('milan')}
+              />
+            )}
+            {screen === 'outcome' && selectedPatient && (
+              <MilanOutcome snapshot={snapshot} patient={selectedPatient} />
             )}
           </section>
           <ActivityTimeline activity={snapshot.activity} />
@@ -971,11 +1063,13 @@ function UtrechtReview({
   patient,
   busy,
   onAction,
+  onReturnMilan,
 }: {
   snapshot: JourneySnapshot
   patient: JourneyPatient
   busy: boolean
   onAction: (action: object) => Promise<JourneySnapshot | null>
+  onReturnMilan: () => void
 }) {
   const [opinion, setOpinion] = useState(
     snapshot.provisional_opinion ?? defaultProvisionalOpinion,
@@ -1101,13 +1195,24 @@ function UtrechtReview({
             onChange={(event) => setReason(event.target.value)}
           />
           {snapshot.evidence_request ? (
-            <div className="sent-confirmation" role="status">
-              <ShieldCheck size={20} />
-              <span>
-                <strong>Imaging request sent to Milan</strong>
-                Dr Bianchi is now responsible for reviewing and approving the update.
-              </span>
-            </div>
+            <>
+              <div className="sent-confirmation" role="status">
+                <ShieldCheck size={20} />
+                <span>
+                  <strong>Imaging request sent to Milan</strong>
+                  Dr Bianchi is now responsible for reviewing and approving the update.
+                </span>
+              </div>
+              <button
+                className="primary-action"
+                type="button"
+                disabled={busy}
+                onClick={onReturnMilan}
+              >
+                Continue as Dr Luca Bianchi
+                <ArrowRight size={17} />
+              </button>
+            </>
           ) : (
             <button
               className="primary-action"
@@ -1127,6 +1232,300 @@ function UtrechtReview({
           )}
         </article>
       )}
+    </section>
+  )
+}
+
+function EvidenceUpdate({
+  snapshot,
+  patient,
+  busy,
+  onAction,
+  onReceive,
+  onOpenUtrecht,
+}: {
+  snapshot: JourneySnapshot
+  patient: JourneyPatient
+  busy: boolean
+  onAction: (action: object) => Promise<JourneySnapshot | null>
+  onReceive: () => void
+  onOpenUtrecht: () => void
+}) {
+  const update = snapshot.evidence_update
+  const approved =
+    update !== null && snapshot.update_approved_versions.includes(update.case_version)
+
+  return (
+    <section className="evidence-update-screen screen-stage">
+      <div className="section-heading">
+        <div>
+          <p className="eyebrow">Dr Luca Bianchi · Milan</p>
+          <h1>Review requested imaging update</h1>
+        </div>
+        <p>
+          Utrecht requested named imaging for {patient.display_name}. New evidence stays in Milan
+          until Dr Bianchi approves the new case version.
+        </p>
+      </div>
+
+      <article className="receiving-card">
+        <h2>Utrecht evidence request</h2>
+        <div className="requested-evidence">
+          {snapshot.evidence_request?.requested_evidence.map((item) => (
+            <span key={item}>
+              <CircleAlert size={15} />
+              {item}
+            </span>
+          ))}
+        </div>
+        <p>{snapshot.evidence_request?.clinical_reason}</p>
+      </article>
+
+      {!update ? (
+        <article className="receiving-card source-arrival-card">
+          <h2>Hospital imaging event</h2>
+          <p>
+            Simulate the approved demonstration event from Milan's imaging archive. The existing
+            evidence-arrival path prepares an immutable version 2 and keeps version 1 available.
+          </p>
+          <code>POST /api/evidence-arrivals · Microsoft.Storage.BlobCreated</code>
+          <button className="primary-action" type="button" disabled={busy} onClick={onReceive}>
+            Receive requested imaging
+          </button>
+        </article>
+      ) : (
+        <article className="receiving-card update-delta-card">
+          <div className="package-heading">
+            <div>
+              <h2>Case version {update.case_version}</h2>
+              <p>Compared with approved case version {update.previous_version}</p>
+            </div>
+            <span>Immutable update</span>
+          </div>
+          <h3>Added evidence</h3>
+          <ul>
+            {update.added_evidence.map((item) => <li key={item}>{item}</li>)}
+          </ul>
+          <h3>Changed findings</h3>
+          <ul>
+            {update.changed_findings.map((item) => <li key={item}>{item}</li>)}
+          </ul>
+          {!approved ? (
+            <button
+              className="primary-action"
+              type="button"
+              disabled={busy}
+              onClick={() =>
+                void onAction({
+                  type: 'approve_evidence_update',
+                  case_version: update.case_version,
+                })
+              }
+            >
+              Approve sharing case version {update.case_version}
+              <ArrowRight size={17} />
+            </button>
+          ) : (
+            <>
+              <div className="sent-confirmation" role="status">
+                <ShieldCheck size={20} />
+                <span>
+                  <strong>Case version {update.case_version} approved</strong>
+                  Utrecht can now acknowledge and complete the specialist review.
+                </span>
+              </div>
+              <button
+                className="primary-action"
+                type="button"
+                disabled={busy}
+                onClick={onOpenUtrecht}
+              >
+                Continue as Dr Eva van Dijk
+                <ArrowRight size={17} />
+              </button>
+            </>
+          )}
+        </article>
+      )}
+    </section>
+  )
+}
+
+const defaultFinalOpinion =
+  'Case version 2 accounts for the original lesion sites and current vessel relationships. The case is appropriate for Utrecht liver MDO review to determine the combined local treatment plan.'
+
+function MdoReview({
+  snapshot,
+  patient,
+  busy,
+  onAction,
+  onReturnMilan,
+}: {
+  snapshot: JourneySnapshot
+  patient: JourneyPatient
+  busy: boolean
+  onAction: (action: object) => Promise<JourneySnapshot | null>
+  onReturnMilan: () => void
+}) {
+  const version = snapshot.update_available_version ?? 2
+  const acknowledged = snapshot.acknowledged_versions.includes(version)
+  const [opinion, setOpinion] = useState(snapshot.final_opinion ?? defaultFinalOpinion)
+
+  return (
+    <section className="mdo-review-screen screen-stage">
+      <div className="section-heading">
+        <div>
+          <p className="eyebrow">Dr Eva van Dijk · UMC Utrecht</p>
+          <h1>Complete specialist review</h1>
+        </div>
+        <p>
+          Acknowledge the approved update, record the final opinion, and accept the current
+          version into the Utrecht multidisciplinary meeting.
+        </p>
+      </div>
+
+      <article className="incoming-referral-heading">
+        <div>
+          <span>Approved update from Milan</span>
+          <h2>{patient.display_name}</h2>
+          <p>{snapshot.evidence_update?.added_evidence.join(' · ')}</p>
+        </div>
+        <strong>Case version {version}</strong>
+      </article>
+
+      <article className="receiving-card">
+        <h2>Version acknowledgement</h2>
+        {!acknowledged ? (
+          <button
+            className="primary-action"
+            type="button"
+            disabled={busy}
+            onClick={() =>
+              void onAction({ type: 'acknowledge_case_version', case_version: version })
+            }
+          >
+            Acknowledge case version {version}
+          </button>
+        ) : (
+          <p className="confirmed-line"><Check size={16} /> Version {version} acknowledged</p>
+        )}
+      </article>
+
+      {acknowledged && (
+        <article className="receiving-card">
+          <h2>Final specialist opinion</h2>
+          <label htmlFor="final-opinion">Opinion for case version {version}</label>
+          <textarea
+            id="final-opinion"
+            value={opinion}
+            disabled={busy || snapshot.final_opinion !== null}
+            onChange={(event) => setOpinion(event.target.value)}
+          />
+          {!snapshot.final_opinion ? (
+            <button
+              className="primary-action"
+              type="button"
+              disabled={busy || opinion.trim().length < 20}
+              onClick={() =>
+                void onAction({ type: 'record_final_opinion', opinion: opinion.trim() })
+              }
+            >
+              Record final specialist opinion
+            </button>
+          ) : (
+            <p className="confirmed-line"><Check size={16} /> Final opinion recorded</p>
+          )}
+        </article>
+      )}
+
+      {snapshot.final_opinion && (
+        <article className="receiving-card">
+          <h2>Utrecht MDO acceptance</h2>
+          <p>
+            The meeting will review case version {version}. After acceptance, the opinion,
+            schedule, and next responsibility return to Milan.
+          </p>
+          {snapshot.mdo_outcome ? (
+            <>
+              <div className="sent-confirmation" role="status">
+                <ShieldCheck size={20} />
+                <span>
+                  <strong>Accepted into Utrecht MDO</strong>
+                  {snapshot.mdo_outcome.scheduled_for}
+                </span>
+              </div>
+              <button
+                className="primary-action"
+                type="button"
+                disabled={busy}
+                onClick={onReturnMilan}
+              >
+                Return outcome to Dr Luca Bianchi
+                <ArrowRight size={17} />
+              </button>
+            </>
+          ) : (
+            <button
+              className="primary-action"
+              type="button"
+              disabled={busy}
+              onClick={() =>
+                void onAction({
+                  type: 'accept_mdo_outcome',
+                  scheduled_for: '29 September 2026 at 14:00 CEST',
+                  next_action:
+                    'Discuss the Utrecht opinion and MDO schedule with Giulia, confirm attendance, and provide any interval clinical changes.',
+                })
+              }
+            >
+              Accept case version {version} into MDO
+            </button>
+          )}
+        </article>
+      )}
+    </section>
+  )
+}
+
+function MilanOutcome({
+  snapshot,
+  patient,
+}: {
+  snapshot: JourneySnapshot
+  patient: JourneyPatient
+}) {
+  const outcome = snapshot.mdo_outcome
+  if (!outcome) return null
+  return (
+    <section className="milan-outcome screen-stage">
+      <div className="section-heading">
+        <div>
+          <p className="eyebrow">Dr Luca Bianchi · Milan</p>
+          <h1>Utrecht outcome received</h1>
+        </div>
+        <p>
+          The cross-border referral is closed for {patient.display_name}. Milan now owns the next
+          clinical action.
+        </p>
+      </div>
+      <article className="outcome-card">
+        <span className="outcome-status"><Check size={18} /> Accepted into Utrecht MDO</span>
+        <h2>Case version {outcome.case_version}</h2>
+        <dl>
+          <div>
+            <dt>Specialist opinion · {outcome.specialist}</dt>
+            <dd>{outcome.final_opinion}</dd>
+          </div>
+          <div>
+            <dt>MDO schedule</dt>
+            <dd>{outcome.scheduled_for}</dd>
+          </div>
+          <div>
+            <dt>Next responsibility · {outcome.next_responsible_actor}</dt>
+            <dd>{outcome.next_action}</dd>
+          </div>
+        </dl>
+      </article>
     </section>
   )
 }

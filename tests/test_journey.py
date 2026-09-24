@@ -59,6 +59,40 @@ def approve_case_version_one(client: TestClient) -> None:
     assert response.status_code == 200
 
 
+def request_missing_imaging(client: TestClient) -> None:
+    approve_case_version_one(client)
+    client.post("/api/journey/actions", json={"type": "enter_role", "role": "utrecht"})
+    client.post(
+        "/api/journey/actions",
+        json={"type": "acknowledge_case_version", "case_version": 1},
+    )
+    client.post(
+        "/api/journey/actions",
+        json={
+            "type": "record_provisional_opinion",
+            "opinion": (
+                "The response supports multidisciplinary review, but baseline CT and "
+                "restaging liver MRI are needed for the final assessment."
+            ),
+        },
+    )
+    response = client.post(
+        "/api/journey/actions",
+        json={
+            "type": "request_evidence",
+            "requested_evidence": [
+                "Original baseline liver CT",
+                "Restaging liver MRI",
+            ],
+            "clinical_reason": (
+                "Original lesion sites and current vessel relationships must be reviewed "
+                "before the multidisciplinary resectability decision."
+            ),
+        },
+    )
+    assert response.status_code == 200
+
+
 def test_initial_snapshot_defines_roles_patients_and_six_stages(tmp_path: Path) -> None:
     journey = ReferralJourney(JsonStateStore(tmp_path / "state.json"))
 
@@ -373,3 +407,70 @@ def test_utrecht_acknowledges_v1_records_opinion_and_requests_imaging(
     assert requested["stages"][4]["status"] == "current"
     assert requested["next_role"] == "milan"
     assert requested["activity"][-1]["kind"] == "evidence_requested"
+
+
+def test_version_two_approval_and_mdo_outcome_close_the_referral_loop(
+    tmp_path: Path,
+) -> None:
+    event = {
+        "event_id": "journey-imaging-001",
+        "occurred_at": "2026-09-24T09:30:00Z",
+    }
+    with TestClient(create_app(tmp_path / "state.json")) as client:
+        request_missing_imaging(client)
+        wrong_role = client.post("/api/evidence-arrivals", json=event)
+        client.post("/api/journey/actions", json={"type": "enter_role", "role": "milan"})
+        arrived = client.post("/api/evidence-arrivals", json=event).json()
+        duplicate = client.post("/api/evidence-arrivals", json=event).json()
+        approved = client.post(
+            "/api/journey/actions",
+            json={"type": "approve_evidence_update", "case_version": 2},
+        ).json()
+        client.post("/api/journey/actions", json={"type": "enter_role", "role": "utrecht"})
+        premature = client.post(
+            "/api/journey/actions",
+            json={
+                "type": "record_final_opinion",
+                "opinion": "Case version 2 supports multidisciplinary liver review.",
+            },
+        )
+        client.post(
+            "/api/journey/actions",
+            json={"type": "acknowledge_case_version", "case_version": 2},
+        )
+        final = client.post(
+            "/api/journey/actions",
+            json={
+                "type": "record_final_opinion",
+                "opinion": (
+                    "Case version 2 accounts for the original lesion sites and current "
+                    "vessel relationships. The case is appropriate for Utrecht liver MDO "
+                    "review to determine the combined local treatment plan."
+                ),
+            },
+        ).json()
+        outcome = client.post(
+            "/api/journey/actions",
+            json={
+                "type": "accept_mdo_outcome",
+                "scheduled_for": "29 September 2026 at 14:00 CEST",
+                "next_action": (
+                    "Discuss the Utrecht opinion and MDO schedule with Giulia, then confirm "
+                    "attendance and provide any interval clinical changes."
+                ),
+            },
+        ).json()
+        client.post("/api/journey/actions", json={"type": "enter_role", "role": "milan"})
+        returned = client.get("/api/journey").json()
+
+    assert wrong_role.status_code == 409
+    assert arrived["prepared_case"]["version"] == 2
+    assert arrived["prepared_case"]["delta"]["from_version"] == 1
+    assert duplicate["duplicate"] is True
+    assert approved["update_approved_versions"] == [2]
+    assert premature.status_code == 409
+    assert "original lesion sites" in final["final_opinion"]
+    assert outcome["mdo_outcome"]["case_version"] == 2
+    assert outcome["mdo_outcome"]["specialist"] == "Dr Eva van Dijk"
+    assert outcome["stages"][5]["status"] == "current"
+    assert returned["mdo_outcome"]["next_responsible_actor"] == "Dr Luca Bianchi"

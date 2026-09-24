@@ -51,6 +51,7 @@ from collab.models import (
     PreflightCheck,
     PreflightReport,
     PreparedCase,
+    ReceiveEvidenceUpdateAction,
     Referral,
     ReferralCreate,
     ReferralJourneyAction,
@@ -311,6 +312,7 @@ def create_app(
         directory,
         referral_service,
         preparation_service,
+        evidence_arrivals,
     )
 
     if configured_runtime_mode == "azure":
@@ -875,6 +877,32 @@ def create_app(
             return publication
 
     def apply_evidence_event(event: EvidenceArrivalEvent) -> EvidenceArrivalResult:
+        journey_state = store.load()
+        if journey_state.referral_journey.package is not None:
+            duplicate = event.event_id in journey_state.processed_evidence_events
+            try:
+                referral_journey.apply(
+                    ReceiveEvidenceUpdateAction(
+                        event_id=event.event_id,
+                        occurred_at=event.occurred_at,
+                    )
+                )
+            except ReferralJourneyError as error:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=str(error),
+                ) from error
+            updated = store.load().current_prepared_case
+            if updated is None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="The evidence update did not produce a prepared case.",
+                )
+            return EvidenceArrivalResult(
+                event_id=event.event_id,
+                duplicate=duplicate,
+                prepared_case=updated,
+            )
         with store.locked():
             state = store.load()
             if state.current_referral is None or state.current_prepared_case is None:

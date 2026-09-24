@@ -297,6 +297,8 @@ and requests missing imaging.
 
 #### INC-012: Versioned update and closed-loop MDO outcome
 
+**Status:** Complete
+
 **Depends on:** INC-011.
 
 **Outcome:** Milan approves case version 2, Utrecht acknowledges it, records the
@@ -319,6 +321,23 @@ final specialist opinion, accepts it into MDO, and Milan receives the result.
 - The final opinion applies to the current case version.
 - MDO acceptance names the version, clinician, date, and next responsibility.
 - Milan can see the returned opinion and MDO state.
+
+**Validation evidence:**
+
+- The existing evidence-arrival module accepts the requested Milan imaging only
+  after Utrecht has made an evidence request and prepares immutable case version
+  2 with a visible delta; duplicate delivery remains idempotent.
+- Dr Bianchi sees the requested evidence, added source records, and changed
+  findings before explicitly approving version 2 for Utrecht.
+- Utrecht cannot acknowledge version 2 before Milan approval and cannot record
+  the final opinion before acknowledging the exact current version.
+- Dr van Dijk's final opinion, the Utrecht MDO schedule, accepted case version,
+  and next Milan responsibility are persisted in the journey timeline.
+- The returned Milan screen closes the loop with the specialist opinion, MDO
+  schedule, and Dr Bianchi's next action.
+- The complete 57-test backend suite, strict mypy, Ruff, five Vitest tests,
+  frontend lint/build, and four desktop/mobile Playwright checks pass, including
+  duplicate evidence delivery and refresh restore of the closed-loop outcome.
 
 #### INC-013: Demonstration quality and plain-language review
 

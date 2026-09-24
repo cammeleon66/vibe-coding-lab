@@ -119,6 +119,11 @@ const initialSnapshot = {
   acknowledged_versions: [],
   provisional_opinion: null,
   evidence_request: null,
+  update_available_version: null,
+  update_approved_versions: [],
+  final_opinion: null,
+  mdo_outcome: null,
+  evidence_update: null,
 }
 
 const milanSnapshot = {
