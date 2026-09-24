@@ -416,8 +416,8 @@ and passes the complete live referral rehearsal.
 
 **Validation evidence:**
 
-- ACR image `oncology-collab-demo:7e5a942` is active in Container App revision
-  `oncology-collab-demo--0000008`; the previous stable `6ded4aa` tag remains
+- ACR image `oncology-collab-demo:bef999a` is active in Container App revision
+  `oncology-collab-demo--0000010`; the previous stable `7e5a942` tag remains
   available for rollback.
 - The existing managed identity, three private Blob endpoints, storage
   accounts, Container Apps environment, monitoring, budget, expiry, access

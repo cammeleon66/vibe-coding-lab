@@ -8,8 +8,8 @@
 ## Reviewed deployment
 
 - Active image:
-  `ocdpscufetxrykg6.azurecr.io/oncology-collab-demo:7e5a942`
-- Active revision: `oncology-collab-demo--0000008`
+  `ocdpscufetxrykg6.azurecr.io/oncology-collab-demo:bef999a`
+- Active revision: `oncology-collab-demo--0000010`
 - Revision mode: single
 - Preserved expiry: `2026-10-07`
 - Preserved access-code configuration; the code is not recorded in this
@@ -49,6 +49,11 @@ Live Playwright then passed four checks against the protected URL:
 - complete Pixel 7 closed-loop referral;
 - Pixel 7 keyboard and axe checks.
 
+After presenter feedback, a persistent federated API activity panel was added.
+Targeted protected-live checks passed at desktop and Pixel 7 sizes and confirmed
+that source-system method, path, status, and result details remain visible after
+the workflow advances beyond the local-data screen.
+
 The live screenshots are:
 
 - [`evidence/live-closed-loop-desktop-chromium.png`](evidence/live-closed-loop-desktop-chromium.png)
@@ -58,7 +63,7 @@ The live screenshots are:
 
 The previous stable image remains in ACR:
 
-`ocdpscufetxrykg6.azurecr.io/oncology-collab-demo:6ded4aa`
+`ocdpscufetxrykg6.azurecr.io/oncology-collab-demo:7e5a942`
 
 Rollback does not require an infrastructure change:
 
@@ -66,7 +71,7 @@ Rollback does not require an infrastructure change:
 az containerapp update `
   --resource-group oncology-collab-demo-platform-rg `
   --name oncology-collab-demo `
-  --image ocdpscufetxrykg6.azurecr.io/oncology-collab-demo:6ded4aa
+  --image ocdpscufetxrykg6.azurecr.io/oncology-collab-demo:7e5a942
 ```
 
 After rollback, rerun the protected health and access checks appropriate to that
