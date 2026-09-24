@@ -10,8 +10,13 @@ services or trust-boundary changes.
 
 ### ADR-016: Backend-owned storyline with a clinical EHR-style scene renderer
 
-**Status:** Proposed — implemented on branch `redesign/storyline-screens`,
-awaiting user approval before merge to `master` or any Azure deployment.
+**Status:** Approved by the product owner (@cammeleon66) on 2026-09-24.
+Scope: the backend-owned 14-scene storyline and EHR-style scene renderer as
+implemented on branch `redesign/storyline-screens` (PR #15), including merge
+to `master` and redeployment to the existing Azure Container App baseline
+(approved 2026-09-24: "go now until we are live"). No new Azure services.
+Re-approval is needed if the storyline becomes non-linear or changes trust
+boundaries.
 **Date:** 2026-09-24
 
 **Context:** The previous single-page frontend decided screen order and
@@ -40,11 +45,18 @@ advance toolbar, and an audit-log drawer.
 **Consequences:** One source of truth for order and gating; reload restores
 the exact scene; frontend tests can use captured backend snapshots. The
 storyline is fixed and linear by design; branching would need a new decision.
+This is a **breaking change** to `/api/journey` and `/api/journey/actions`:
+the `enter_role`, `open_scale_reveal` and `open_international_referral`
+actions, the snapshot fields `roles`, `stages` and `next_role`, and the state
+fields `current_stage`, `regional_exchange.phase` and `regional_exchange.stage`
+were removed (`scripts/verify_azure_rehearsal.py` was updated accordingly).
 No change to trust boundaries, data handling, identity, Azure services, or
 cost.
 
-**Reversibility:** High. The earlier journey actions and API routes remain;
-reverting the branch restores the previous frontend.
+**Reversibility:** Moderate. Rolling back means reverting backend and frontend
+together (redeploying the previous image) and selecting **Reset**, because
+state persisted under the new schema has no phase/stage fields and would load
+on the old code at the default regional phase.
 
 #### INC-016: Storyline screens
 
