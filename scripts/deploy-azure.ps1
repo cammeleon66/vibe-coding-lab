@@ -418,5 +418,5 @@ if (-not [string]::IsNullOrWhiteSpace($existingAppId)) {
 }
 
 Write-Host "Azure deployment complete: $applicationUrl"
-Write-Host "Shared demo access code: $DemoAccessCode"
+Write-Host "Shared demo access code: configured (value not displayed)"
 Write-Host "Expiry tag: $expiry. Fabric and Azure OpenAI remain disabled."
