@@ -8,6 +8,60 @@ services or trust-boundary changes.
 
 ## Closed-loop redesign plan
 
+### ADR-016: Backend-owned storyline with a clinical EHR-style scene renderer
+
+**Status:** Proposed — implemented on branch `redesign/storyline-screens`,
+awaiting user approval before merge to `master` or any Azure deployment.
+**Date:** 2026-09-24
+
+**Context:** The previous single-page frontend decided screen order and
+gating itself (≈2,000 lines in `App.tsx`), mixed several steps per screen, and
+duplicated backend rules. Presenters found it hard to know which button to
+press next, and role switches were implicit.
+
+**Decision:** The backend owns a fixed 14-scene storyline in three chapters
+(Utrecht, European network, Milan to Utrecht). `GET /api/journey` returns the
+current scene, actor, handover, `can_advance`, `blocked_reason`, and
+`advance_label`; the only way forward is the typed `advance_scene` action with
+`from_scene` (a repeated advance from an earlier scene is a no-op; advancing
+from a scene not yet open, or while blocked, is rejected). The frontend is a
+scene renderer (`StoryShell` + `scenes/registry.ts`) in a neutral clinical EHR
+layout: patient banner, workflow rail, one work area, assistant pane, bottom
+advance toolbar, and an audit-log drawer.
+
+**Options considered:**
+
+1. Keep frontend-owned flow with more guards — rejected: rules stay
+   duplicated and restore/reload stays fragile.
+2. Backend storyline, frontend renderer — chosen.
+3. Route-per-step frontend router — rejected: adds URL state that can
+   disagree with persisted backend state.
+
+**Consequences:** One source of truth for order and gating; reload restores
+the exact scene; frontend tests can use captured backend snapshots. The
+storyline is fixed and linear by design; branching would need a new decision.
+No change to trust boundaries, data handling, identity, Azure services, or
+cost.
+
+**Reversibility:** High. The earlier journey actions and API routes remain;
+reverting the branch restores the previous frontend.
+
+#### INC-016: Storyline screens
+
+**Status:** Complete on branch; not merged or deployed.
+
+**Validation evidence:**
+
+- 58 backend tests, Ruff, and mypy pass.
+- 20 Vitest tests render every scene from real per-scene backend snapshots
+  and cover advance, read-only review, locked future steps, error, and reset.
+- Six desktop/mobile Playwright checks pass with axe (no serious/critical
+  findings). Fixed a mobile defect where the collapsed workflow strip hid step
+  titles with `display: none`, leaving the step buttons without accessible
+  names.
+- Fresh storyline screenshots in `docs/demo/evidence/`; outdated captures
+  removed. Live verification is pending approval to deploy.
+
 ### Local-to-European storyline extension
 
 #### INC-015: Regional proof and European scale reveal

@@ -17,25 +17,34 @@ clinical decision support
    cleared.
 3. Keep the browser at 100% zoom. The tested presenter viewports are 1440×960
    and Pixel 7.
-4. Start at the Utrecht regional problem. Do not skip directly to the clinical
-   role picker: the local proof establishes the pattern used by the rest of the
-   story.
+4. Start at step 1. The workflow rail on the left (a numbered strip on mobile)
+   shows all 14 steps; future steps are locked, completed steps reopen
+   read-only.
 
-## Five-minute path
+## The 14 steps
 
-| Time | Presenter action | What to say |
-| --- | --- | --- |
-| 0:00–0:35 | Check the nearby patient-summary and imaging sources, then approve regional sharing. | “A Utrecht oncology team needs an MRI held by the hospital around the corner. The exchange finds the summary and images through hospital APIs. The originals stay at Stadshaven, and Dr Noor Jansen decides what may cross.” |
-| 0:35–0:55 | Open the scale reveal and point from Utrecht to the Netherlands, Germany and Italy, and Europe. | “This is not a special local integration. Geography changes; source ownership, provenance, clinician approval, and named responsibility do not.” |
-| 0:55–1:20 | Open the international referral, enter **Milan workspace**, and select **Giulia Moretti**. | “Now we apply the same pattern across borders. Dr Luca Bianchi starts from his active-patient list and selects the case that needs external review.” |
-| 1:20–1:50 | Let the three Milan checks complete. Point to the EHR, document repository, and imaging archive requests. | “Again, each hospital-owned system is queried separately. Available and missing evidence stay visible without first centralizing every source record.” |
-| 1:50–2:35 | Confirm the clinical question, query the directory, select **UMC Utrecht**, query requirements, and prepare version 1. | “The destination is explainable and bounded. Utrecht’s requirements remain visible, including missing baseline CT and liver MRI.” |
-| 2:35–3:05 | Point to **Shared after approval** and **Remains in Milan**, then approve and send version 1. | “Structured context and provenance cross only after Dr Bianchi approves them. Original documents, images, and the Milan record stay in Milan.” |
-| 3:05–3:40 | Continue as **Dr Eva van Dijk**, acknowledge version 1, record the provisional opinion, and request imaging. | “Utrecht acknowledges the exact version. Dr van Dijk’s opinion is separate from Milan’s assessment, and her evidence request gives a clinical reason.” |
-| 3:40–4:15 | Return to Milan, receive the imaging event, review the version 1→2 delta, and approve version 2. | “Late evidence creates an immutable second version. The exchange shows what changed, but Dr Bianchi still decides whether the update crosses.” |
-| 4:15–4:45 | Return to Utrecht, acknowledge version 2, record the final opinion, and accept it into the MDO. | “The final opinion applies to the acknowledged current version, and Utrecht names the meeting time.” |
-| 4:45–5:00 | Return the outcome to Milan and point to the next responsibility. | “The loop closes with the opinion, MDO schedule, and exact next action. We solved the nearby problem first, then proved the same architecture at European scale.” |
+Each step has one responsible clinician, shown in the page header. The primary
+button in the bottom toolbar advances the story and only enables once the
+step's work is done. When the responsible clinician changes, a **Handover**
+banner names who handed over and what was carried. **Audit log** in the top bar
+lists every hospital-system request.
 
+| Step | Screen title | Presenter action | Advance button | What to say |
+| --- | --- | --- | --- | --- |
+| 1 | The MRI is at the hospital around the corner | Introduce Sanne de Vries and the missing MRI. | **Ask the exchange agent to find it** | “A Utrecht oncology team needs an MRI held by the hospital around the corner.” |
+| 2 | The agent asks Stadshaven's own systems | Let the patient-summary and imaging requests complete; point to the assistant pane. | **Send the sharing request to Dr Noor Jansen** | “The exchange asks Stadshaven's own systems. Nothing is copied yet.” |
+| 3 | Stadshaven decides what may cross | As Dr Noor Jansen, select **Approve release**. Point out that original images stay. | **Show what Utrecht receives** | “The originals stay at Stadshaven, and Dr Jansen decides what may cross.” |
+| 4 | Today's treatment review can go ahead | Point to the released MRI finding. | **Now scale the same pattern** | “The nearby problem is solved without a shared database.” |
+| 5 | From Utrecht to a European network | Select **Netherlands**, **Germany and Italy**, then **Europe**. | **Follow one referral from Milan to Utrecht** | “Geography changes; source ownership, provenance, approval, and named responsibility do not.” |
+| 6 | Milan needs a second opinion | As Dr Luca Bianchi, select **Open Giulia's case**. | **Let the agent check Milan's own sources** | “The same pattern now crosses a border.” |
+| 7 | The agent checks what Milan already holds | Let the EHR, document and imaging checks complete; point to missing evidence. | **Frame the clinical question** | “Each hospital-owned system is queried separately; gaps stay visible.” |
+| 8 | Dr Bianchi frames the question | Select **Confirm the question**. | **Find the right expert centre** | “The clinician owns the question, not the software.” |
+| 9 | Choosing the expert centre | Select **Choose Dr Eva van Dijk**. | **Prepare the referral package** | “The destination is explainable and bounded.” |
+| 10 | Approve exactly what crosses the border | Point to what is shared and what remains in Milan, then **Approve and send case version 1**. | **Hand over to Dr Eva van Dijk in Utrecht** | “Structured context and provenance cross only after Dr Bianchi approves them.” |
+| 11 | Utrecht reviews and asks for imaging | As Dr van Dijk: **Acknowledge case version 1**, **Record provisional opinion**, **Send the imaging request to Milan**. | **Hand back to Dr Luca Bianchi in Milan** | “Utrecht acknowledges the exact version, and the imaging request gives a clinical reason.” |
+| 12 | New imaging arrives in Milan | **Simulate PACS arrival**, review the version 1→2 changes, then **Approve and send case version 2**. | **Hand over to Dr Eva van Dijk in Utrecht** | “Late evidence creates an immutable second version, and Dr Bianchi still decides whether it crosses.” |
+| 13 | Utrecht completes the specialist review | **Acknowledge case version 2**, **Record specialist opinion**, **Accept into the MDO**. | **Return the outcome to Milan** | “The final opinion applies to the acknowledged current version.” |
+| 14 | The loop is closed | Point to the opinion, MDO date (29 September 2026, 14:00 CEST) and next action. No advance button. | — | “We solved the nearby problem first, then proved the same pattern at European scale.” |
 ## Clinical wording to preserve
 
 - Say **source-linked referral package**, not “centralized patient record.”
@@ -56,8 +65,9 @@ claim is live.
 
 - **Access-code rejection:** confirm the current code with the deployment owner.
   Do not send access codes in URLs.
-- **A source check fails:** leave the failed source visible and use **Retry
-  failed source**. Do not describe the referral as ready.
+- **A source check fails:** leave the failed source visible and use **Retry the failed source**. Do not describe the referral as ready.
+- **Agent work interrupted (e.g. after a refresh):** select **Resume assistant tasks**
+  in the assistant pane.
 - **State restore fails:** refresh once, then show the explicit error rather
   than describing a successful flow.
 - **Evidence update fails:** explain that the previous valid case version is
@@ -66,17 +76,10 @@ claim is live.
 
 ## Current visual evidence
 
-| View | Evidence |
-| --- | --- |
-| Regional proof desktop | [`evidence/regional-proof-desktop-chromium.png`](evidence/regional-proof-desktop-chromium.png) |
-| Regional proof mobile | [`evidence/regional-proof-mobile-chromium.png`](evidence/regional-proof-mobile-chromium.png) |
-| European scale reveal desktop | [`evidence/scale-reveal-desktop-chromium.png`](evidence/scale-reveal-desktop-chromium.png) |
-| European scale reveal mobile | [`evidence/scale-reveal-mobile-chromium.png`](evidence/scale-reveal-mobile-chromium.png) |
-| Live regional proof desktop | [`evidence/live-regional-proof-desktop-chromium.png`](evidence/live-regional-proof-desktop-chromium.png) |
-| Live regional proof mobile | [`evidence/live-regional-proof-mobile-chromium.png`](evidence/live-regional-proof-mobile-chromium.png) |
-| Live European scale reveal desktop | [`evidence/live-scale-reveal-desktop-chromium.png`](evidence/live-scale-reveal-desktop-chromium.png) |
-| Live European scale reveal mobile | [`evidence/live-scale-reveal-mobile-chromium.png`](evidence/live-scale-reveal-mobile-chromium.png) |
-| Closed-loop desktop outcome | [`evidence/closed-loop-desktop-chromium.png`](evidence/closed-loop-desktop-chromium.png) |
-| Closed-loop mobile outcome | [`evidence/closed-loop-mobile-chromium.png`](evidence/closed-loop-mobile-chromium.png) |
-| Live Azure desktop outcome | [`evidence/live-closed-loop-desktop-chromium.png`](evidence/live-closed-loop-desktop-chromium.png) |
-| Live Azure mobile outcome | [`evidence/live-closed-loop-mobile-chromium.png`](evidence/live-closed-loop-mobile-chromium.png) |
+Full-page desktop and mobile captures of steps 1–7, 9–12 and 14 are generated
+by `frontend/tests/storyline.spec.ts` into [`evidence/`](evidence/), named
+`NN-<scene>-<desktop|mobile>-chromium.png` (for example
+[`evidence/01-local-problem-desktop-chromium.png`](evidence/01-local-problem-desktop-chromium.png)
+and
+[`evidence/14-closing-outcome-mobile-chromium.png`](evidence/14-closing-outcome-mobile-chromium.png)).
+Live-environment captures for the storyline redesign have not been taken yet.

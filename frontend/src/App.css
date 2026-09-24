@@ -1738,9 +1738,18 @@ h1[tabindex='-1']:focus {
     display: contents;
   }
 
-  .nav-group-title,
-  .nav-label {
+  .nav-group-title {
     display: none;
+  }
+
+  /* Visually hidden, but keeps the step title as the button's accessible name. */
+  .nav-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
   }
 
   .nav-group + .nav-group {

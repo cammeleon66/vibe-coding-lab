@@ -11,6 +11,13 @@ directory, credential verification, or hospital integration.**
 
 ## Demonstrated journey
 
+The journey is a backend-owned **storyline** of 14 scenes in three chapters
+(Utrecht, the European network, Milan to Utrecht). `GET /api/journey` returns
+the current scene, its actor, handover, and advance label; the frontend is a
+clinical EHR-style scene renderer that advances only via the
+`advance_scene` action. See [`CONTEXT.md`](CONTEXT.md) and the step-by-step
+[`presenter guide`](docs/demo/presenter-guide.md).
+
 1. Two synthetic Utrecht hospitals resolve a missing-imaging problem through
    visible patient-summary and imaging-system requests.
 2. A clinician approves the regional exchange; source files remain at the
@@ -81,15 +88,25 @@ review, handoff, research, preflight, health, access-code, and Event Grid routes
 .\.venv\Scripts\python.exe -m mypy src --strict
 .\.venv\Scripts\python.exe -m pytest -q
 npm --prefix frontend run lint
-npm --prefix frontend test -- --run
+npm --prefix frontend test
 npm --prefix frontend run build
 npm --prefix frontend run test:browser
 ```
 
-Current local baseline: 58 backend tests, strict mypy, Ruff, six Vitest tests,
-frontend lint/build, and six desktop/mobile Playwright checks. Automated axe
-scans report no serious or critical WCAG A/AA findings in the tested regional,
-scale, role, and patient screens.
+Current local baseline: 58 backend tests, strict mypy, Ruff, 20 Vitest tests
+(one per scene, driven by real per-scene backend snapshots in
+`frontend/src/test/sceneSnapshots.json`), frontend lint/build, and six
+desktop/mobile Playwright checks in `frontend/tests/storyline.spec.ts`.
+Automated axe scans report no serious or critical WCAG A/AA findings on the
+captured storyline screens.
+
+Regenerate the Vitest snapshots after a backend storyline change:
+
+```powershell
+cd frontend
+npm run build
+$env:CAPTURE_SNAPSHOTS='1'; npx playwright test storyline.spec.ts --project=desktop-chromium -g "full storyline"
+```
 
 ## Limits
 

@@ -1,7 +1,20 @@
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type Page } from '@playwright/test'
+import { writeFileSync } from 'node:fs'
 
 const live = Boolean(process.env.DEMO_ACCESS_CODE)
+
+// CAPTURE_SNAPSHOTS=1 records the final snapshot of every scene for the vitest fixtures.
+function recordSceneSnapshots(page: Page) {
+  const byScene: Record<string, unknown> = {}
+  page.on('response', async (response) => {
+    if (!/\/api\/journey(\/actions)?$/.test(response.url()) || !response.ok()) return
+    const snapshot = (await response.json()) as { storyline: { current_scene: string } }
+    byScene[snapshot.storyline.current_scene] = snapshot
+  })
+  return () =>
+    writeFileSync('src/test/sceneSnapshots.json', `${JSON.stringify(byScene, null, 1)}\n`)
+}
 
 async function expectAccessible(page: Page) {
   const results = await new AxeBuilder({ page })
@@ -46,6 +59,8 @@ test.beforeEach(async ({ page }) => {
 test('walks the full storyline, one screen per step', async ({ page }, testInfo) => {
   test.setTimeout(120_000)
   const project = testInfo.project.name
+  const saveSnapshots =
+    process.env.CAPTURE_SNAPSHOTS && project === 'desktop-chromium' ? recordSceneSnapshots(page) : null
   await page.goto('/')
 
   // Chapter 1: two hospitals in Utrecht.
@@ -155,6 +170,7 @@ test('walks the full storyline, one screen per step', async ({ page }, testInfo)
   await expect(page.locator('.ehr-toolbar')).toHaveCount(0)
   await expectAccessible(page)
   await capture(page, '14-closing-outcome', project)
+  saveSnapshots?.()
 
   // Completed steps stay reviewable, read-only.
   await page.getByRole('navigation', { name: 'Workflow' }).getByRole('button', { name: /Stadshaven decides/ }).click()
