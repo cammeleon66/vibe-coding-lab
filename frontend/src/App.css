@@ -843,13 +843,71 @@
   line-height: 1.6;
 }
 
-.activity-timeline {
-  max-height: calc(100vh - 180px);
+.journey-sidebar {
   position: sticky;
   top: 20px;
+  display: grid;
+  gap: 18px;
+}
+
+.activity-timeline,
+.api-activity {
+  max-height: calc(50vh - 40px);
   overflow: auto;
   border: 1px solid var(--line);
   background: var(--white);
+}
+
+.api-activity ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.api-activity li {
+  padding: 17px 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.api-call-heading {
+  display: flex;
+  gap: 12px;
+  align-items: start;
+  justify-content: space-between;
+}
+
+.api-call-heading strong {
+  font-size: 0.78rem;
+}
+
+.api-call-heading em {
+  font-size: 0.65rem;
+  font-style: normal;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.api-call-heading em.success {
+  color: var(--success);
+}
+
+.api-call-heading em.failed {
+  color: var(--warning);
+}
+
+.api-activity code {
+  margin-top: 7px;
+  display: block;
+  overflow-wrap: anywhere;
+  color: var(--blue-deep);
+  font-size: 0.66rem;
+}
+
+.api-activity li p {
+  margin: 7px 0 0;
+  color: var(--ink-soft);
+  font-size: 0.74rem;
+  line-height: 1.4;
 }
 
 .timeline-heading {
@@ -940,6 +998,13 @@
 
   .activity-timeline {
     max-height: none;
+  }
+
+  .api-activity {
+    max-height: none;
+  }
+
+  .journey-sidebar {
     position: static;
   }
 }

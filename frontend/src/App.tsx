@@ -509,7 +509,10 @@ function App() {
               <MilanOutcome snapshot={snapshot} patient={selectedPatient} />
             )}
           </section>
-          <ActivityTimeline activity={snapshot.activity} />
+          <div className="journey-sidebar">
+            <ApiActivity snapshot={snapshot} />
+            <ActivityTimeline activity={snapshot.activity} />
+          </div>
         </div>
       )}
 
@@ -1535,6 +1538,94 @@ function MilanOutcome({
         </dl>
       </article>
     </section>
+  )
+}
+
+function ApiActivity({ snapshot }: { snapshot: JourneySnapshot }) {
+  const calls = [
+    ...snapshot.source_checks.map((check) => ({
+      id: check.source_id,
+      system: check.source_label,
+      endpoint: `POST ${check.endpoint}`,
+      status: check.status === 'complete' ? '200 OK' : 'Failed',
+      detail:
+        check.status === 'complete'
+          ? `${check.records.filter((record) => record.status === 'available').length} of ${check.records.length} expected records available`
+          : check.error ?? 'The source request failed.',
+    })),
+    ...(snapshot.activity.some((event) => event.kind === 'directory_queried')
+      ? [
+          {
+            id: 'expert-directory',
+            system: 'Synthetic European expert directory',
+            endpoint: 'POST /api/journey/actions · action=query_expert_directory',
+            status: '200 OK',
+            detail: `${snapshot.destinations.length} bounded destination matches returned`,
+          },
+        ]
+      : []),
+    ...(snapshot.activity.some((event) => event.kind === 'requirements_queried')
+      ? [
+          {
+            id: 'utrecht-requirements',
+            system: 'UMC Utrecht referral requirements',
+            endpoint: 'POST /api/journey/actions · action=query_requirements',
+            status: '200 OK',
+            detail: `${snapshot.requirements.length} requirements returned`,
+          },
+        ]
+      : []),
+    ...(snapshot.evidence_update
+      ? [
+          {
+            id: 'evidence-arrival',
+            system: 'Milan imaging event',
+            endpoint: 'POST /api/evidence-arrivals · Microsoft.Storage.BlobCreated',
+            status: '200 OK',
+            detail: `Prepared immutable case version ${snapshot.evidence_update.case_version}`,
+          },
+        ]
+      : []),
+  ]
+
+  return (
+    <aside className="api-activity" aria-label="API activity" tabIndex={0}>
+      <div className="timeline-heading">
+        <div>
+          <p className="eyebrow">Federated API activity</p>
+          <h2>Hospital system calls</h2>
+        </div>
+        <span>{calls.length}</span>
+      </div>
+      {calls.length === 0 ? (
+        <div className="timeline-empty">
+          <Network size={22} />
+          <p>Source-system requests will appear after a patient is selected.</p>
+        </div>
+      ) : (
+        <ol>
+          {[...calls].reverse().map((call) => (
+            <li key={call.id}>
+              <div className="api-call-heading">
+                <strong>{call.system}</strong>
+                <em className={call.status === '200 OK' ? 'success' : 'failed'}>
+                  {call.status}
+                </em>
+              </div>
+              <code>{call.endpoint}</code>
+              <p>{call.detail}</p>
+            </li>
+          ))}
+        </ol>
+      )}
+      <div className="timeline-boundary">
+        <Building2 size={17} />
+        <p>
+          These requests query hospital-owned systems. Querying does not copy every source record
+          into shared collaboration state.
+        </p>
+      </div>
+    </aside>
   )
 }
 
