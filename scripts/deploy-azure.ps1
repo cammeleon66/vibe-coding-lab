@@ -291,18 +291,49 @@ finally {
 }
 
 Write-Host "Creating the Event Grid evidence-delivery subscription..."
+$milanStorageId = (
+    Invoke-AzureCli -Arguments @(
+        "storage", "account", "show",
+        "--name", $outputs.milanAccountName.value,
+        "--query", "id",
+        "--output", "tsv"
+    )
+).Trim()
+$systemTopics = Invoke-AzureCliJson -Arguments @(
+    "eventgrid", "system-topic", "list",
+    "--resource-group", $milanResourceGroup,
+    "--output", "json"
+)
+$systemTopicName = @(
+    $systemTopics |
+        Where-Object { $_.source -eq $milanStorageId } |
+        Select-Object -First 1 -ExpandProperty name
+)[0]
+if ([string]::IsNullOrWhiteSpace($systemTopicName)) {
+    $systemTopicName = "$Prefix-milan-source"
+    [void](Invoke-AzureCli -Arguments @(
+        "eventgrid", "system-topic", "create",
+        "--resource-group", $milanResourceGroup,
+        "--name", $systemTopicName,
+        "--source", $milanStorageId,
+        "--topic-type", "Microsoft.Storage.StorageAccounts",
+        "--location", $Location,
+        "--only-show-errors",
+        "--output", "none"
+    ))
+}
+else {
+    Write-Host "Reusing existing storage system topic $systemTopicName."
+}
 [void](Invoke-AzureCli -Arguments @(
     "deployment", "group", "create",
     "--name", "$Prefix-events-$timestamp",
     "--resource-group", $milanResourceGroup,
     "--template-file", "$repoRoot\infra\event-grid.bicep",
     "--parameters",
-    "prefix=$Prefix",
-    "storageAccountName=$($outputs.milanAccountName.value)",
+    "systemTopicName=$systemTopicName",
     "endpointUrl=$applicationUrl/api/event-grid/evidence-arrivals",
     "eventGridWebhookSecret=$eventGridSecret",
-    "ownerEmail=$OwnerEmail",
-    "expiryDate=$expiry",
     "--only-show-errors",
     "--output", "none"
 ))
