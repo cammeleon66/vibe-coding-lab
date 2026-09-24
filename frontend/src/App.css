@@ -1076,7 +1076,7 @@
 }
 
 .regional-source {
-  min-height: 150px;
+  min-height: 110px;
   padding: 20px;
   border: 1px solid var(--line);
   background: var(--white);
@@ -1101,7 +1101,15 @@
 }
 
 .regional-source strong {
+  color: var(--ink-soft);
+}
+
+.regional-source.complete strong {
   color: var(--success);
+}
+
+h1[tabindex='-1']:focus {
+  outline: none;
 }
 
 .regional-source code {

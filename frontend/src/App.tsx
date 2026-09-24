@@ -1935,7 +1935,7 @@ function ActivityTimeline({ activity }: { activity: JourneyActivity[] }) {
       {activity.length === 0 ? (
         <div className="timeline-empty">
           <History size={22} />
-          <p>Workspace and patient actions will appear here.</p>
+          <p>Queries and clinician approvals will appear here.</p>
         </div>
       ) : (
         <ol>
@@ -1954,8 +1954,8 @@ function ActivityTimeline({ activity }: { activity: JourneyActivity[] }) {
       <div className="timeline-boundary">
         <Building2 size={17} />
         <p>
-          This timeline records hospital-owned source queries, clinician approvals, version
-          acknowledgements, and the returned MDO outcome.
+          Every source query and clinician approval is recorded here. Original records stay
+          with the hospital that owns them.
         </p>
       </div>
     </aside>
