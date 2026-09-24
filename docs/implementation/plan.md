@@ -116,6 +116,8 @@ shown together without marketing-style headings or generic AI language.
 
 #### INC-008: Referral journey foundation and role entry
 
+**Status:** Complete
+
 **Depends on:** Product brief 0.3 and DEC-010.
 
 **Outcome:** A persisted journey snapshot and command interface drive the role
@@ -141,6 +143,25 @@ picker, Milan workspace, three-patient worklist, and activity timeline.
   but cannot enter the referral flow.
 - Future stages state their prerequisites.
 - Unit, route, restore, reset, and frontend navigation tests pass.
+
+**Validation evidence:**
+
+- `ReferralJourney` exposes only `snapshot()` and `apply(action)`; action
+  ordering and persisted activity are not implemented in React.
+- The shared `DemoState` adds a defaulted journey state, and a legacy JSON state
+  without journey fields restores safely.
+- The HTTP adapter exposes `GET /api/journey` and
+  `POST /api/journey/actions`.
+- The role picker distinguishes the synthetic Milan and Utrecht roles and
+  states that it is not production authentication.
+- The Milan worklist contains three synthetic patients and allows only the
+  approved referral candidate to advance.
+- The six-stage rail shows the exact prerequisite for every locked stage.
+- Six journey backend tests, the complete 52-test backend suite, five Vitest
+  tests, frontend lint/build, strict mypy, and four desktop/mobile Playwright
+  checks pass.
+- Desktop and mobile accessibility scans report no serious or critical
+  violations for the role and patient screens.
 
 #### INC-009: Federated Milan data check
 

@@ -32,6 +32,7 @@ from collab.azure_adapters import (
 )
 from collab.directory import SyntheticExpertDirectory
 from collab.handoff import CollaborationWorkflow, HandoffError
+from collab.journey import ReferralJourney, ReferralJourneyError
 from collab.models import (
     CaseUpdateError,
     ClinicalNeed,
@@ -51,6 +52,8 @@ from collab.models import (
     PreparedCase,
     Referral,
     ReferralCreate,
+    ReferralJourneyAction,
+    ReferralJourneySnapshot,
     ReferralSender,
     ResearchAuthorizationCreate,
     ResearchPublication,
@@ -234,13 +237,9 @@ def create_app(
         "EVENT_GRID_WEBHOOK_SECRET"
     )
     configured_demo_access_code = demo_access_code or os.getenv("DEMO_ACCESS_CODE")
-    configured_demo_session_secret = demo_session_secret or os.getenv(
-        "DEMO_SESSION_SECRET"
-    )
+    configured_demo_session_secret = demo_session_secret or os.getenv("DEMO_SESSION_SECRET")
     if bool(configured_demo_access_code) != bool(configured_demo_session_secret):
-        raise RuntimeError(
-            "DEMO_ACCESS_CODE and DEMO_SESSION_SECRET must be configured together."
-        )
+        raise RuntimeError("DEMO_ACCESS_CODE and DEMO_SESSION_SECRET must be configured together.")
     directory = SyntheticExpertDirectory(configured_fixture_root / "expert_centres.json")
     referral_service = ReferralService(directory)
     configured_publisher = arrival_publisher
@@ -305,6 +304,7 @@ def create_app(
         "RESEARCH_DEMO_AUTHORIZATION_CODE"
     )
     research_sessions: set[str] = set()
+    referral_journey = ReferralJourney(store)
 
     if configured_runtime_mode == "azure":
         connection_string = os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING")
@@ -343,7 +343,8 @@ def create_app(
         path = request.url.path
         if (
             request.method == "OPTIONS"
-            or path in {
+            or path
+            in {
                 "/api/health",
                 "/api/event-grid/evidence-arrivals",
                 "/api/demo-access",
@@ -368,6 +369,25 @@ def create_app(
     @application.get("/api/health")
     def health() -> dict[str, str]:
         return {"status": "ok", "mode": reported_runtime_mode}
+
+    @application.get("/api/journey", response_model=ReferralJourneySnapshot)
+    def journey_snapshot() -> ReferralJourneySnapshot:
+        return referral_journey.snapshot()
+
+    @application.post(
+        "/api/journey/actions",
+        response_model=ReferralJourneySnapshot,
+    )
+    def apply_journey_action(
+        action: ReferralJourneyAction,
+    ) -> ReferralJourneySnapshot:
+        try:
+            return referral_journey.apply(action)
+        except ReferralJourneyError as error:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(error),
+            ) from error
 
     @application.get("/demo-access", response_class=HTMLResponse)
     def demo_access_page() -> str:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -25,6 +25,92 @@ class Urgency(StrEnum):
 
 class DemoAccessCreate(BaseModel):
     code: str = Field(min_length=1, max_length=128)
+
+
+class JourneyRole(StrEnum):
+    MILAN = "milan"
+    UTRECHT = "utrecht"
+
+
+class JourneyStageId(StrEnum):
+    PATIENT = "patient"
+    LOCAL_DATA = "local_data"
+    REFERRAL = "referral"
+    UTRECHT_REVIEW = "utrecht_review"
+    EVIDENCE_UPDATE = "evidence_update"
+    MDO_OUTCOME = "mdo_outcome"
+
+
+class JourneyActivity(BaseModel):
+    id: str
+    kind: Literal["workspace_opened", "patient_selected"]
+    actor: str
+    institution: str
+    title: str
+    detail: str
+    occurred_at: datetime
+
+
+class ReferralJourneyState(BaseModel):
+    active_role: JourneyRole | None = None
+    selected_patient_id: str | None = None
+    current_stage: JourneyStageId = JourneyStageId.PATIENT
+    activity: list[JourneyActivity] = Field(default_factory=list)
+
+
+class JourneyRoleView(BaseModel):
+    id: JourneyRole
+    clinician_name: str
+    institution: str
+    specialty: str
+    responsibilities: list[str]
+    available: bool
+    unavailable_reason: str | None = None
+    recommended: bool = False
+
+
+class JourneyPatientView(BaseModel):
+    case_id: str
+    display_name: str
+    age_band: str
+    diagnosis: str
+    care_status: str
+    current_plan: str
+    last_updated: str
+    referral_candidate: bool
+    synthetic: bool = True
+
+
+class JourneyStageView(BaseModel):
+    id: JourneyStageId
+    label: str
+    status: Literal["complete", "current", "available", "locked"]
+    prerequisite: str | None = None
+
+
+class ReferralJourneySnapshot(BaseModel):
+    active_role: JourneyRole | None
+    selected_patient_id: str | None
+    roles: list[JourneyRoleView]
+    patients: list[JourneyPatientView]
+    stages: list[JourneyStageView]
+    activity: list[JourneyActivity]
+
+
+class EnterRoleAction(BaseModel):
+    type: Literal["enter_role"] = "enter_role"
+    role: JourneyRole
+
+
+class SelectPatientAction(BaseModel):
+    type: Literal["select_patient"] = "select_patient"
+    patient_id: str = Field(min_length=1)
+
+
+ReferralJourneyAction = Annotated[
+    EnterRoleAction | SelectPatientAction,
+    Field(discriminator="type"),
+]
 
 
 class ReferralStatus(StrEnum):
@@ -418,6 +504,7 @@ class PreflightReport(BaseModel):
 
 
 class DemoState(BaseModel):
+    referral_journey: ReferralJourneyState = Field(default_factory=ReferralJourneyState)
     current_referral: Referral | None = None
     current_prepared_case: PreparedCase | None = None
     prepared_case_versions: list[PreparedCase] = Field(default_factory=list)

@@ -1,345 +1,77 @@
 import {
   ArrowRight,
+  Building2,
   Check,
   CircleAlert,
-  CircleDot,
-  ClipboardCheck,
-  Database,
-  ExternalLink,
-  FileCheck2,
-  FileSearch,
-  GitCompare,
-  Globe2,
   History,
-  Languages,
-  Link2,
-  MapPin,
   Network,
-  Radio,
   RotateCcw,
   ShieldCheck,
   Stethoscope,
+  UserRound,
+  Users,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
+import { useEffect, useState } from 'react'
 import './App.css'
 
-type MatchStatus = 'match' | 'condition'
-type RequirementStatus = 'present' | 'missing'
-type Urgency = 'routine' | 'expedited' | 'urgent'
+type JourneyRole = 'milan' | 'utrecht'
+type JourneyStageId =
+  | 'patient'
+  | 'local_data'
+  | 'referral'
+  | 'utrecht_review'
+  | 'evidence_update'
+  | 'mdo_outcome'
 
-interface ClinicalNeed {
-  case_id: string
-  diagnosis: string
-  decision_focus: string
-  referring_country: string
-  preferred_languages: string[]
-  available_evidence: string[]
-}
-
-interface Clinician {
-  id: string
-  name: string
-  role: string
-  specialties: string[]
-  languages: string[]
-  fictional: boolean
-  eligible: boolean
-}
-
-interface RequirementDefinition {
-  key: string
-  label: string
-  evidence_type: string
-  rationale: string
-}
-
-interface Centre {
-  id: string
-  name: string
-  city: string
-  country: string
-  network_context: string
-  profile_label: string
-  expertise_tags: string[]
-  accepted_evidence: string[]
-  languages: string[]
-  synthetic_availability: string
-  referral_pathway: string
-  requirements: RequirementDefinition[]
-  clinicians: Clinician[]
-  simulated: boolean
-}
-
-interface MatchReason {
-  label: string
-  detail: string
-  status: MatchStatus
-}
-
-interface ExpertMatch {
-  centre: Centre
-  score: number
-  reasons: MatchReason[]
-  conditions: string[]
-}
-
-interface MatchResponse {
-  need: ClinicalNeed
-  matches: ExpertMatch[]
-  limitations: string[]
-}
-
-interface ReferralRequirement {
-  key: string
-  label: string
-  rationale: string
-  status: RequirementStatus
-}
-
-interface Referral {
-  id: string
-  version: number
-  created_at: string
-  need: ClinicalNeed
-  urgency: Urgency
-  sender: ReferralSender
-  centre: Centre
-  clinician: Clinician
-  requirements: ReferralRequirement[]
-  status: string
-  responsibility: {
-    actor: string
-    action: string
-  }
-  limitations: string[]
-}
-
-interface ReferralSender {
+interface JourneyRoleView {
+  id: JourneyRole
   clinician_name: string
   institution: string
-  country: string
+  specialty: string
+  responsibilities: string[]
+  available: boolean
+  unavailable_reason: string | null
+  recommended: boolean
 }
 
-interface ProvenanceLink {
-  evidence_id: string
-  source_pointer: string
-  source_institution: string
-  source_format: string
-  observed_at: string
-  transformation_status: string
-}
-
-interface EvidenceFact {
-  key: string
-  label: string
-  category: string
-  raw_value: string
-  normalized_value: string | null
-  transformation: string
-  source_pointer: string
-}
-
-interface EvidenceEnvelope {
-  source_institution: string
-  source_identifier: string
-  source_format: string
-  observed_at: string
-  received_at: string
-  content_hash: string
-  transformation_status: string
-  facts: EvidenceFact[]
-  warnings: string[]
-  unmapped_values: string[]
-  retrieval_reference: string
-  original_media_type: string
-  original_content: string
-}
-
-interface PreparedClaim {
-  id: string
-  label: string
-  category: string
-  raw_value: string
-  normalized_value: string | null
-  kind: string
-  transformation: string
-  provenance: ProvenanceLink[]
-}
-
-interface PreparedCase {
+interface JourneyPatient {
   case_id: string
-  referral_id: string
-  version: number
-  prepared_at: string
-  clinical_question: string
-  evidence: EvidenceEnvelope[]
-  claims: PreparedClaim[]
-  conflicts: {
-    id: string
-    field: string
-    description: string
-    claim_ids: string[]
-    resolution: string
-  }[]
-  missing: {
-    id: string
-    field: string
-    description: string
-    severity: string
-    required_by: string
-    provenance: ProvenanceLink[]
-  }[]
-  warnings: string[]
-  unmapped_values: string[]
-  synthesis: { text: string; support_ids: string[] }[]
-  limitations: string[]
-  delta: {
-    from_version: number
-    to_version: number
-    added_evidence: {
-      evidence_id: string
-      label: string
-      source_format: string
-      source_institution: string
-      observed_at: string
-    }[]
-    changed_findings: {
-      subject: string
-      before: string
-      after: string
-      conclusion_requires_reassessment: boolean
-    }[]
-    remaining_uncertainty: string[]
-    affected_human_questions: string[]
-  } | null
+  display_name: string
+  age_band: string
+  diagnosis: string
+  care_status: string
+  current_plan: string
+  last_updated: string
+  referral_candidate: boolean
 }
 
-interface EvidenceArrivalResult {
-  event_id: string
-  duplicate: boolean
-  prepared_case: PreparedCase
+interface JourneyStage {
+  id: JourneyStageId
+  label: string
+  status: 'complete' | 'current' | 'available' | 'locked'
+  prerequisite: string | null
 }
 
-interface CaseUpdateError {
-  event_id: string
-  message: string
+interface JourneyActivity {
+  id: string
+  kind: 'workspace_opened' | 'patient_selected'
+  actor: string
+  institution: string
+  title: string
+  detail: string
   occurred_at: string
-  preserved_version: number
 }
 
-type ReviewConditionStatus = 'open' | 'resolved'
-
-interface ReviewCondition {
-  issue_id: string
-  kind: 'required_evidence' | 'review'
-  description: string
-  status: ReviewConditionStatus
-  resolution: string
+interface JourneySnapshot {
+  active_role: JourneyRole | null
+  selected_patient_id: string | null
+  roles: JourneyRoleView[]
+  patients: JourneyPatient[]
+  stages: JourneyStage[]
+  activity: JourneyActivity[]
 }
 
-interface HumanOpinion {
-  id: string
-  case_id: string
-  case_version: number
-  reviewer: string
-  opinion: string
-  conditions: ReviewCondition[]
-  next_responsibility: {
-    actor: string
-    action: string
-  }
-  recorded_at: string
-}
-
-interface HumanReviewState {
-  current_case_version: number
-  opinion: HumanOpinion | null
-  required_conditions: ReviewCondition[]
-  stale: boolean
-  handoff_ready: boolean
-  blockers: string[]
-}
-
-interface HandoffManifest {
-  id: string
-  version: number
-  case_id: string
-  clinical_question: string
-  evidence_version: number
-  source_evidence_inventory: string[]
-  unresolved_issues: string[]
-  opinion_id: string
-  responsibility: {
-    actor: string
-    action: string
-  }
-  created_at: string
-  synthetic_labels: string[]
-  launch_url: string
-  separate_backend: boolean
-  backend_notice: string
-}
-
-interface ResearchLineage {
-  field: string
-  prepared_claim_id: string
-  source_record_id: string
-  source_institution: string
-  source_format: string
-  source_pointer: string
-}
-
-interface ResearchPublication {
-  projection: {
-    id: string
-    purpose: string
-    version: number
-    schema_version: string
-    case_version: number
-    approved_fields: string[]
-    record: Record<string, string>
-    lineage: ResearchLineage[]
-    excluded_categories: string[]
-    synthetic_only: boolean
-  }
-  receipt: {
-    id: string
-    projection_id: string
-    projection_version: number
-    adapter: string
-    published_at: string
-  }
-}
-
-interface PreflightReport {
-  ready: boolean
-  mode: string
-  checked_at: string
-  checks: {
-    id: string
-    label: string
-    status: 'pass' | 'warning' | 'fail'
-    detail: string
-    required: boolean
-  }[]
-  limitations: string[]
-}
-
-const initialNeed: ClinicalNeed = {
-  case_id: 'CRC-EU-001',
-  diagnosis: 'Metastatic colorectal cancer with liver-limited metastases',
-  decision_focus: 'Conversion therapy and liver-metastasis resectability',
-  referring_country: 'Italy',
-  preferred_languages: ['Italian', 'English'],
-  available_evidence: ['pathology', 'treatment_timeline', 'current_ct_summary'],
-}
-
-const initialSender: ReferralSender = {
-  clinician_name: 'Dr Luca Bianchi',
-  institution: 'Istituto Nazionale dei Tumori, Milan',
-  country: 'Italy',
-}
+type Screen = 'role' | 'patients' | 'selected'
 
 async function requestJson<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -350,1793 +82,406 @@ async function requestJson<T>(url: string, options?: RequestInit): Promise<T> {
     const payload = (await response.json().catch(() => null)) as { detail?: string } | null
     throw new Error(payload?.detail ?? `Request failed with status ${response.status}.`)
   }
-  if (response.status === 204) {
-    return undefined as T
-  }
+  if (response.status === 204) return undefined as T
   return (await response.json()) as T
 }
 
 function App() {
-  const [need, setNeed] = useState(initialNeed)
-  const [sender, setSender] = useState(initialSender)
-  const [urgency, setUrgency] = useState<Urgency>('expedited')
-  const [matches, setMatches] = useState<MatchResponse | null>(null)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [selectedClinicianId, setSelectedClinicianId] = useState<string | null>(null)
-  const [referral, setReferral] = useState<Referral | null>(null)
-  const [preparedCase, setPreparedCase] = useState<PreparedCase | null>(null)
-  const [previousCase, setPreviousCase] = useState<PreparedCase | null>(null)
-  const [inspectedSource, setInspectedSource] = useState<EvidenceEnvelope | null>(null)
-  const [caseUpdateError, setCaseUpdateError] = useState<CaseUpdateError | null>(null)
-  const [reviewState, setReviewState] = useState<HumanReviewState | null>(null)
-  const [handoffManifest, setHandoffManifest] = useState<HandoffManifest | null>(null)
-  const [researchOpen, setResearchOpen] = useState(false)
-  const [researchAuthorizationCode, setResearchAuthorizationCode] = useState('')
-  const [researchPublication, setResearchPublication] = useState<ResearchPublication | null>(null)
-  const [researchLoading, setResearchLoading] = useState(false)
-  const [researchError, setResearchError] = useState<string | null>(null)
-  const [restoring, setRestoring] = useState(true)
+  const [snapshot, setSnapshot] = useState<JourneySnapshot | null>(null)
+  const [screen, setScreen] = useState<Screen>('role')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [statusMessage, setStatusMessage] = useState<string | null>(null)
-  const [preflightOpen, setPreflightOpen] = useState(false)
-  const [preflightLoading, setPreflightLoading] = useState(false)
-  const [preflightReport, setPreflightReport] = useState<PreflightReport | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
 
   useEffect(() => {
-    Promise.all([
-      requestJson<Referral | null>('/api/referrals/current'),
-      requestJson<PreparedCase | null>('/api/cases/current'),
-    ])
-      .then(([restoredReferral, restoredCase]) => {
-        setReferral(restoredReferral)
-        setPreparedCase(restoredCase)
-        if (restoredCase) {
-          void requestJson<CaseUpdateError | null>('/api/cases/current/update-error')
-            .then(setCaseUpdateError)
-            .catch(() => undefined)
-          if (restoredCase.version > 1) {
-            void requestJson<PreparedCase>(
-              `/api/cases/current/versions/${restoredCase.version - 1}`,
-            )
-              .then(setPreviousCase)
-              .catch(() => undefined)
-          }
-          void Promise.all([
-            requestJson<HumanReviewState>('/api/cases/current/review'),
-            requestJson<HandoffManifest[]>('/api/cases/current/handoffs'),
-          ])
-            .then(([state, items]) => {
-              setReviewState(state)
-              const currentManifest =
-                state.handoff_ready && state.opinion
-                  ? items
-                      .filter(
-                        (item) =>
-                          item.evidence_version === restoredCase.version &&
-                          item.opinion_id === state.opinion?.id,
-                      )
-                      .at(-1) ?? null
-                  : null
-              setHandoffManifest(currentManifest)
-            })
-            .catch(() => undefined)
+    requestJson<JourneySnapshot>('/api/journey')
+      .then((restored) => {
+        setSnapshot(restored)
+        if (restored.active_role === 'milan') {
+          setScreen(restored.selected_patient_id ? 'selected' : 'patients')
         }
       })
       .catch((reason: unknown) => {
-        setError(reason instanceof Error ? reason.message : 'Could not restore the demo state.')
+        setError(reason instanceof Error ? reason.message : 'Could not restore the journey.')
       })
-      .finally(() => setRestoring(false))
   }, [])
 
-  async function refreshReviewState() {
-    try {
-      const state = await requestJson<HumanReviewState>('/api/cases/current/review')
-      setReviewState(state)
-    } catch {
-      setReviewState(null)
-    }
-  }
-
-  const selected = useMemo(
-    () => matches?.matches.find((item) => item.centre.id === selectedId) ?? null,
-    [matches, selectedId],
-  )
-
-  function selectCentre(match: ExpertMatch) {
-    setSelectedId(match.centre.id)
-    setSelectedClinicianId(match.centre.clinicians.find((item) => item.eligible)?.id ?? null)
-  }
-
-  async function findExpertise() {
+  async function applyAction(action: object) {
     setBusy(true)
     setError(null)
-    setStatusMessage(null)
+    setNotice(null)
     try {
-      const result = await requestJson<MatchResponse>('/api/expert-matches', {
+      const updated = await requestJson<JourneySnapshot>('/api/journey/actions', {
         method: 'POST',
-        body: JSON.stringify(need),
+        body: JSON.stringify(action),
       })
-      setMatches(result)
-      const topMatch = result.matches[0]
-      if (topMatch) selectCentre(topMatch)
+      setSnapshot(updated)
+      return updated
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Expert discovery failed.')
+      setError(reason instanceof Error ? reason.message : 'The action could not be completed.')
+      return null
     } finally {
       setBusy(false)
     }
   }
 
-  async function initiateReferral() {
-    if (!selected || !selectedClinicianId) return
-    setBusy(true)
-    setError(null)
-    setStatusMessage(null)
-    try {
-      const created = await requestJson<Referral>('/api/referrals', {
-        method: 'POST',
-        body: JSON.stringify({
-          need,
-          centre_id: selected.centre.id,
-          clinician_id: selectedClinicianId,
-          urgency,
-          sender,
-        }),
-      })
-      setReferral(created)
-      setPreparedCase(null)
-      setPreviousCase(null)
-      setCaseUpdateError(null)
-      setReviewState(null)
-      setHandoffManifest(null)
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Referral creation failed.')
-    } finally {
-      setBusy(false)
+  async function enterRole(role: JourneyRole) {
+    const updated = await applyAction({ type: 'enter_role', role })
+    if (!updated) return
+    if (role === 'milan') {
+      setScreen(updated.selected_patient_id ? 'selected' : 'patients')
+    } else {
+      setNotice('The Utrecht receiving screen is implemented in issue #10.')
     }
   }
 
-  async function prepareWorkspace() {
-    setBusy(true)
-    setError(null)
-    setStatusMessage(null)
-    try {
-      const prepared = await requestJson<PreparedCase>('/api/cases/current/prepare', {
-        method: 'POST',
-      })
-      setPreparedCase(prepared)
-      setPreviousCase(null)
-      setCaseUpdateError(null)
-      await refreshReviewState()
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Case preparation failed.')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function inspectSource(evidenceId: string, version?: number) {
-    setBusy(true)
-    setError(null)
-    setStatusMessage(null)
-    try {
-      const evidence = await requestJson<EvidenceEnvelope>(
-        `/api/cases/current/sources/${encodeURIComponent(evidenceId)}${
-          version === undefined ? '' : `?version=${version}`
-        }`,
-      )
-      setInspectedSource(evidence)
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Source inspection failed.')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function deliverImagingEvidence() {
-    if (!preparedCase) return
-    setBusy(true)
-    setError(null)
-    setStatusMessage(null)
-    try {
-      const result = await requestJson<EvidenceArrivalResult>('/api/evidence-arrivals', {
-        method: 'POST',
-        body: JSON.stringify({
-          event_id: 'local-event-grid-imaging-001',
-          event_type: 'Microsoft.Storage.BlobCreated',
-          subject: '/synthetic/milan/CRC-EU-001/imaging',
-          case_id: preparedCase.case_id,
-          evidence_set: 'baseline-and-restaging-imaging',
-          occurred_at: new Date().toISOString(),
-        }),
-      })
-      setPreviousCase(preparedCase)
-      setPreparedCase(result.prepared_case)
-      setCaseUpdateError(null)
-      setHandoffManifest(null)
-      await refreshReviewState()
-    } catch (reason) {
-      const message = reason instanceof Error ? reason.message : 'Evidence update failed.'
-      setError(message)
-      setCaseUpdateError({
-        event_id: 'local-event-grid-imaging-001',
-        message,
-        occurred_at: new Date().toISOString(),
-        preserved_version: preparedCase.version,
-      })
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function saveHumanReview(command: {
-    case_version: number
-    reviewer: string
-    opinion: string
-    conditions: {
-      issue_id: string
-      status: ReviewConditionStatus
-      resolution: string
-    }[]
-    next_responsibility: {
-      actor: string
-      action: string
-    }
-  }) {
-    setBusy(true)
-    setError(null)
-    setStatusMessage(null)
-    try {
-      const state = await requestJson<HumanReviewState>('/api/cases/current/reviews', {
-        method: 'POST',
-        body: JSON.stringify(command),
-      })
-      setReviewState(state)
-      setHandoffManifest(null)
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Human review could not be saved.')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function createMdoHandoff() {
-    if (!preparedCase || !reviewState?.opinion) return
-    setBusy(true)
-    setError(null)
-    setStatusMessage(null)
-    try {
-      const manifest = await requestJson<HandoffManifest>('/api/cases/current/handoffs', {
-        method: 'POST',
-        body: JSON.stringify({
-          case_version: preparedCase.version,
-          opinion_id: reviewState.opinion.id,
-        }),
-      })
-      setHandoffManifest(manifest)
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'MDO handoff could not be created.')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function openResearchEpilogue() {
-    setResearchLoading(true)
-    setResearchError(null)
-    setStatusMessage(null)
-    try {
-      await requestJson<void>('/api/research/authorize', {
-        method: 'POST',
-        body: JSON.stringify({ authorization_code: researchAuthorizationCode }),
-      })
-      setResearchOpen(true)
-      const publication = await requestJson<ResearchPublication | null>(
-        '/api/research/projection',
-      )
-      setResearchPublication(publication)
-    } catch (reason) {
-      setResearchError(
-        reason instanceof Error ? reason.message : 'Research projection could not be loaded.',
-      )
-    } finally {
-      setResearchLoading(false)
-    }
-  }
-
-  async function publishResearchProjection() {
-    setResearchLoading(true)
-    setResearchError(null)
-    setStatusMessage(null)
-    try {
-      const publication = await requestJson<ResearchPublication>(
-        '/api/research/projection',
-        {
-          method: 'POST',
-        },
-      )
-      setResearchPublication(publication)
-    } catch (reason) {
-      setResearchError(
-        reason instanceof Error ? reason.message : 'Research projection publication failed.',
-      )
-    } finally {
-      setResearchLoading(false)
-    }
+  async function selectPatient(patientId: string) {
+    const updated = await applyAction({ type: 'select_patient', patient_id: patientId })
+    if (updated) setScreen('selected')
   }
 
   async function resetDemo() {
     setBusy(true)
     setError(null)
-    setStatusMessage(null)
     try {
       await requestJson<void>('/api/reset', { method: 'POST' })
-      setReferral(null)
-      setPreparedCase(null)
-      setPreviousCase(null)
-      setInspectedSource(null)
-      setCaseUpdateError(null)
-      setReviewState(null)
-      setHandoffManifest(null)
-      setResearchOpen(false)
-      setResearchAuthorizationCode('')
-      setResearchPublication(null)
-      setResearchLoading(false)
-      setResearchError(null)
-      setMatches(null)
-      setSelectedId(null)
-      setSelectedClinicianId(null)
-      setNeed(initialNeed)
-      setSender(initialSender)
-      setUrgency('expedited')
-      setStatusMessage('Rehearsal reset to a clean synthetic case.')
+      setSnapshot(await requestJson<JourneySnapshot>('/api/journey'))
+      setScreen('role')
+      setNotice('The synthetic referral journey has been reset.')
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Could not reset the demo.')
+      setError(reason instanceof Error ? reason.message : 'The journey could not be reset.')
     } finally {
       setBusy(false)
     }
   }
 
-  async function runPreflight() {
-    setPreflightOpen(true)
-    setPreflightLoading(true)
-    setError(null)
-    setStatusMessage(null)
-    try {
-      setPreflightReport(await requestJson<PreflightReport>('/api/preflight'))
-    } catch (reason) {
-      setPreflightReport(null)
-      setError(reason instanceof Error ? reason.message : 'Preflight could not be completed.')
-    } finally {
-      setPreflightLoading(false)
-    }
-  }
-
-  const completedJourneySteps = handoffManifest
-    ? 5
-    : reviewState?.handoff_ready
-      ? 4
-      : preparedCase
-        ? 3
-        : referral
-          ? 2
-          : matches
-            ? 1
-            : 0
+  const selectedPatient =
+    snapshot?.patients.find((patient) => patient.case_id === snapshot.selected_patient_id) ??
+    null
 
   return (
-    <main aria-busy={restoring || busy || preflightLoading}>
+    <main className="journey-app" aria-busy={busy || snapshot === null}>
       <header className="masthead">
-        <a className="brand" href="/" aria-label="European Oncology Exchange">
+        <div className="brand" aria-label="European Oncology Exchange">
           <span className="brand-mark" aria-hidden="true">
             <Network size={18} strokeWidth={1.7} />
           </span>
           <span>
             <strong>European Oncology Exchange</strong>
-            <small>Synthetic collaboration demonstrator</small>
+            <small>Synthetic cross-border referral demonstration</small>
           </span>
-        </a>
+        </div>
         <div className="presenter-controls">
-          <div className="mode-label">
-            <CircleDot size={14} />
-            Deterministic rehearsal
-          </div>
-          <button className="header-action" type="button" onClick={runPreflight}>
-            <ShieldCheck size={15} />
-            Preflight
-          </button>
+          {snapshot?.active_role && (
+            <span className={`role-indicator ${snapshot.active_role}`}>
+              <UserRound size={15} />
+              {snapshot.roles.find((role) => role.id === snapshot.active_role)?.clinician_name}
+            </span>
+          )}
           <button
             className="header-action"
             type="button"
-            onClick={resetDemo}
-            disabled={busy || restoring}
+            onClick={() => setScreen('role')}
+            disabled={busy}
           >
+            <Users size={15} />
+            Clinical roles
+          </button>
+          <button className="header-action" type="button" onClick={resetDemo} disabled={busy}>
             <RotateCcw size={15} />
             Reset
           </button>
         </div>
       </header>
 
-      <ol className="journey-rail" aria-label="Demonstration journey" tabIndex={0}>
-        {['Find expertise', 'Open collaboration', 'Prepare evidence', 'Human review', 'MDO'].map(
-          (step, index) => (
+      {snapshot && (
+        <ol className="journey-rail" aria-label="Referral stages">
+          {snapshot.stages.map((stage, index) => (
             <li
-              className={`journey-step ${index < completedJourneySteps ? 'complete' : ''} ${
-                index === Math.min(completedJourneySteps, 4) && completedJourneySteps < 5
-                  ? 'active'
-                  : ''
-              }`}
-              key={step}
-              aria-current={
-                index === Math.min(completedJourneySteps, 4) && completedJourneySteps < 5
-                  ? 'step'
-                  : undefined
-              }
+              className={`journey-step ${stage.status}`}
+              key={stage.id}
+              aria-current={stage.status === 'current' ? 'step' : undefined}
             >
-              <span>{String(index + 1).padStart(2, '0')}</span>
-              {step}
+              <button
+                type="button"
+                aria-disabled={stage.status === 'locked'}
+                title={stage.prerequisite ?? undefined}
+                onClick={() => {
+                  if (stage.status === 'locked') {
+                    setNotice(stage.prerequisite)
+                    return
+                  }
+                  if (stage.id === 'patient') setScreen('patients')
+                  else if (stage.id === 'local_data') setScreen('selected')
+                  else setNotice(`${stage.label} is implemented in a later increment.`)
+                }}
+              >
+                <span>{String(index + 1).padStart(2, '0')}</span>
+                {stage.label}
+              </button>
             </li>
-          ),
-        )}
-      </ol>
-
-      {preflightOpen && (
-        <PreflightPanel
-          loading={preflightLoading}
-          report={preflightReport}
-          onClose={() => setPreflightOpen(false)}
-          onRun={runPreflight}
-        />
+          ))}
+        </ol>
       )}
 
       {error && (
         <div className="alert" role="alert">
           <CircleAlert size={18} />
-          <span>{error}</span>
+          {error}
         </div>
       )}
-
-      {statusMessage && (
+      {notice && (
         <div className="status-banner" role="status">
-          <Check size={18} />
-          <span>{statusMessage}</span>
+          <ShieldCheck size={17} />
+          {notice}
         </div>
       )}
 
-      {restoring ? (
-        <section className="loading-stage" role="status" aria-live="polite">
+      {snapshot === null ? (
+        <section className="loading-stage" role="status">
           <span className="loading-pulse" aria-hidden="true" />
-          <p className="eyebrow">Restoring deterministic rehearsal</p>
-          <h1>Bringing the last valid case state back into view.</h1>
-          <p>Source evidence and collaboration state remain local and synthetic.</p>
+          <p className="eyebrow">Loading demonstration state</p>
+          <h1>Restoring the referral journey</h1>
         </section>
-      ) : preparedCase && referral ? (
-        <PreparedWorkspace
-          preparedCase={preparedCase}
-          previousCase={previousCase}
-          referral={referral}
-          busy={busy}
-          caseUpdateError={caseUpdateError}
-          reviewState={reviewState}
-          handoffManifest={handoffManifest}
-          researchOpen={researchOpen}
-          researchAuthorizationCode={researchAuthorizationCode}
-          researchPublication={researchPublication}
-          researchLoading={researchLoading}
-          researchError={researchError}
-          inspectedSource={inspectedSource}
-          onInspectSource={inspectSource}
-          onDeliverImaging={deliverImagingEvidence}
-          onSaveReview={saveHumanReview}
-          onCreateHandoff={createMdoHandoff}
-          onOpenResearch={openResearchEpilogue}
-          onResearchAuthorizationCodeChange={setResearchAuthorizationCode}
-          onPublishResearch={publishResearchProjection}
-          onCloseSource={() => setInspectedSource(null)}
-          onReset={resetDemo}
-        />
-      ) : referral ? (
-        <ReferralOpened
-          referral={referral}
-          busy={busy}
-          onPrepare={prepareWorkspace}
-          onReset={resetDemo}
-        />
       ) : (
-        <>
-          <section className="hero">
-            <div className="hero-copy">
-              <p className="eyebrow">Milan · synthetic case CRC-EU-001</p>
-              <h1>Find the right room before moving the case.</h1>
-              <p className="hero-lede">
-                A patient may need expertise beyond one hospital. Start from the clinical need,
-                discover a credible European centre, then carry the evidence—not the burden—to
-                the right colleague.
-              </p>
-              <button className="primary-action" onClick={findExpertise} disabled={busy}>
-                <Globe2 size={19} />
-                {busy ? 'Searching the network…' : 'Find European expertise'}
-                <ArrowRight size={18} />
-              </button>
-            </div>
-            <ClinicalQuestion
-              need={need}
-              sender={sender}
-              urgency={urgency}
-              onNeedChange={setNeed}
-              onSenderChange={setSender}
-              onUrgencyChange={setUrgency}
-            />
+        <div className="journey-layout">
+          <section className="journey-screen">
+            {screen === 'role' && (
+              <RolePicker roles={snapshot.roles} busy={busy} onEnter={enterRole} />
+            )}
+            {screen === 'patients' && (
+              <PatientWorklist
+                patients={snapshot.patients}
+                busy={busy}
+                onSelect={selectPatient}
+              />
+            )}
+            {screen === 'selected' && selectedPatient && (
+              <SelectedPatient patient={selectedPatient} />
+            )}
           </section>
-
-          {matches && (
-            <section className="discovery" aria-live="polite">
-              <div className="section-heading">
-                <div>
-                  <p className="eyebrow">Explainable discovery</p>
-                  <h2>Three possible rooms. One strongest fit.</h2>
-                </div>
-                <p>
-                  Ranked from the synthetic capability profiles and the evidence currently
-                  available in Milan.
-                </p>
-              </div>
-
-              {matches.matches.length === 0 ? (
-                <div className="empty-state" role="status">
-                  <FileSearch size={28} />
-                  <div>
-                    <h3>No suitable synthetic centre found</h3>
-                    <p>
-                      Revise the clinical need or available evidence. The demonstrator does not
-                      invent a match when its bounded directory has none.
-                    </p>
-                  </div>
-                </div>
-              ) : (
-              <div className="network-layout">
-                <div className="centre-list" role="list" aria-label="Matched expert centres">
-                  {matches.matches.map((match, index) => (
-                    <button
-                      className={`centre-row ${selectedId === match.centre.id ? 'selected' : ''}`}
-                      key={match.centre.id}
-                      onClick={() => selectCentre(match)}
-                      role="listitem"
-                      type="button"
-                    >
-                      <span className="rank">{String(index + 1).padStart(2, '0')}</span>
-                      <span className="centre-name">
-                        <strong>{match.centre.name}</strong>
-                        <small>
-                          {match.centre.city}, {match.centre.country}
-                        </small>
-                      </span>
-                      <span className="score">Score {match.score}</span>
-                      <ArrowRight size={17} />
-                    </button>
-                  ))}
-                  <div className="directory-boundary">
-                    <ShieldCheck size={17} />
-                    <span>{matches.limitations[0]}</span>
-                  </div>
-                </div>
-
-                {selected && (
-                  <article className="match-detail">
-                    <div className="match-title">
-                      <div>
-                        <p className="profile-label">{selected.centre.profile_label}</p>
-                        <h3>{selected.centre.name}</h3>
-                        <p>{selected.centre.network_context}</p>
-                      </div>
-                      <div className="match-score">
-                        <strong>{selected.score}</strong>
-                        <span>match score</span>
-                      </div>
-                    </div>
-
-                    <div className="reason-grid">
-                      {selected.reasons.map((reason) => (
-                        <div className="reason" key={reason.label}>
-                          {reason.status === 'match' ? (
-                            <Check size={17} />
-                          ) : (
-                            <CircleAlert size={17} />
-                          )}
-                          <div>
-                            <strong>{reason.label}</strong>
-                            <p>{reason.detail}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="clinician-line">
-                      <div className="clinician-avatar" aria-hidden="true">
-                        EV
-                      </div>
-                      <div>
-                        <small>Eligible clinician in this demonstration</small>
-                        <label className="sr-only" htmlFor="clinician">
-                          Select eligible clinician
-                        </label>
-                        <select
-                          id="clinician"
-                          value={selectedClinicianId ?? ''}
-                          onChange={(event) => setSelectedClinicianId(event.target.value)}
-                        >
-                          {selected.centre.clinicians
-                            .filter((clinician) => clinician.eligible)
-                            .map((clinician) => (
-                              <option value={clinician.id} key={clinician.id}>
-                                {clinician.name} · {clinician.role}
-                              </option>
-                            ))}
-                        </select>
-                      </div>
-                      <div className="language">
-                        <Languages size={16} />
-                        {selected.centre.clinicians
-                          .find((clinician) => clinician.id === selectedClinicianId)
-                          ?.languages.join(' · ')}
-                      </div>
-                    </div>
-
-                    <div className="referral-path">
-                      <FileCheck2 size={18} />
-                      <div>
-                        <strong>Referral path</strong>
-                        <p>{selected.centre.referral_pathway}</p>
-                      </div>
-                    </div>
-
-                    <button
-                      className="primary-action full"
-                      onClick={initiateReferral}
-                      disabled={busy || !selectedClinicianId}
-                    >
-                      <Stethoscope size={19} />
-                      {busy ? 'Opening collaboration…' : 'Request specialist collaboration'}
-                      <ArrowRight size={18} />
-                    </button>
-                  </article>
-                )}
-              </div>
-              )}
-            </section>
-          )}
-        </>
+          <ActivityTimeline activity={snapshot.activity} />
+        </div>
       )}
 
       <footer>
-        <span>Demonstration system · No real patient data</span>
-        <span>No live directory, credential or availability verification</span>
+        <span>Synthetic demonstration · No real patient or clinician data</span>
+        <span>Clinical roles and hospital systems are simulated</span>
       </footer>
     </main>
   )
 }
 
-function PreflightPanel({
-  loading,
-  report,
-  onClose,
-  onRun,
+function RolePicker({
+  roles,
+  busy,
+  onEnter,
 }: {
-  loading: boolean
-  report: PreflightReport | null
-  onClose: () => void
-  onRun: () => void
+  roles: JourneyRoleView[]
+  busy: boolean
+  onEnter: (role: JourneyRole) => void
 }) {
   return (
-    <section className="preflight-panel" aria-label="Presenter preflight">
-      <div className="preflight-heading">
+    <section className="role-picker screen-stage">
+      <div className="section-heading">
         <div>
-          <p className="eyebrow">Presenter readiness</p>
-          <h2>{report?.ready ? 'Local rehearsal ready' : 'Check the room before the story'}</h2>
+          <p className="eyebrow">Synthetic clinical roles</p>
+          <h1>Choose a clinical workspace</h1>
         </div>
-        <button className="header-action" type="button" onClick={onClose}>
-          Close
-        </button>
+        <p>
+          Each role has separate hospital data and responsibilities. This role picker is part of
+          the demonstration and is not a production sign-in system.
+        </p>
       </div>
-      {loading && (
-        <div className="preflight-loading" role="status">
-          <span className="loading-pulse" aria-hidden="true" />
-          Checking deterministic fixtures, state, build, and boundaries…
-        </div>
-      )}
-      {!loading && report && (
-        <>
-          <div className="preflight-checks">
-            {report.checks.map((check) => (
-              <article className={`preflight-check ${check.status}`} key={check.id}>
-                {check.status === 'pass' ? <Check size={17} /> : <CircleAlert size={17} />}
-                <div>
-                  <strong>{check.label}</strong>
-                  <p>{check.detail}</p>
-                </div>
-              </article>
-            ))}
-          </div>
-          <div className="preflight-foot">
-            <span>
-              {report.ready ? 'All required local checks passed.' : 'Required checks need attention.'}
-            </span>
-            <button className="secondary-action" type="button" onClick={onRun}>
-              Run again
+      <div className="role-card-grid">
+        {roles.map((role) => (
+          <article
+            className={`role-card ${role.recommended ? 'recommended' : ''} ${
+              role.available ? '' : 'unavailable'
+            }`}
+            key={role.id}
+          >
+            <div className="role-card-heading">
+              <span className={`role-icon ${role.id}`}>
+                {role.id === 'milan' ? <UserRound size={22} /> : <Stethoscope size={22} />}
+              </span>
+              {role.recommended && <span className="recommended-label">Continue here</span>}
+            </div>
+            <p className="eyebrow">{role.id === 'milan' ? 'Milan' : 'Utrecht'}</p>
+            <h2>{role.clinician_name}</h2>
+            <p>{role.specialty}</p>
+            <dl>
+              <div>
+                <dt>Institution</dt>
+                <dd>{role.institution}</dd>
+              </div>
+              <div>
+                <dt>Responsibilities</dt>
+                <dd>{role.responsibilities.join(' · ')}</dd>
+              </div>
+            </dl>
+            <button
+              className={role.available ? 'primary-action full' : 'secondary-action full'}
+              type="button"
+              disabled={busy || !role.available}
+              onClick={() => onEnter(role.id)}
+            >
+              {role.available ? `Open ${role.id === 'milan' ? 'Milan' : 'Utrecht'} workspace` : role.unavailable_reason}
+              {role.available && <ArrowRight size={18} />}
             </button>
-          </div>
-        </>
-      )}
+          </article>
+        ))}
+      </div>
     </section>
   )
 }
 
-function ClinicalQuestion({
-  need,
-  sender,
-  urgency,
-  onNeedChange,
-  onSenderChange,
-  onUrgencyChange,
-}: {
-  need: ClinicalNeed
-  sender: ReferralSender
-  urgency: Urgency
-  onNeedChange: (need: ClinicalNeed) => void
-  onSenderChange: (sender: ReferralSender) => void
-  onUrgencyChange: (urgency: Urgency) => void
-}) {
-  return (
-    <aside className="clinical-question">
-      <div className="route-label">
-        <MapPin size={17} />
-        Referring team · Milan
-      </div>
-      <p className="case-label">Clinical need</p>
-      <div className="clinical-form">
-        <label>
-          Clinical question
-          <textarea
-            value={need.decision_focus}
-            onChange={(event) => onNeedChange({ ...need, decision_focus: event.target.value })}
-            rows={3}
-          />
-        </label>
-        <label>
-          Diagnosis
-          <input
-            value={need.diagnosis}
-            onChange={(event) => onNeedChange({ ...need, diagnosis: event.target.value })}
-          />
-        </label>
-        <div className="field-grid">
-          <label>
-            Urgency
-            <select
-              value={urgency}
-              onChange={(event) => onUrgencyChange(event.target.value as Urgency)}
-            >
-              <option value="routine">Routine</option>
-              <option value="expedited">Expedited</option>
-              <option value="urgent">Urgent</option>
-            </select>
-          </label>
-          <label>
-            Sender
-            <input
-              value={sender.clinician_name}
-              onChange={(event) =>
-                onSenderChange({ ...sender, clinician_name: event.target.value })
-              }
-            />
-          </label>
-        </div>
-        <label>
-          Referring institution
-          <input
-            value={sender.institution}
-            onChange={(event) => onSenderChange({ ...sender, institution: event.target.value })}
-          />
-        </label>
-        <div className="evidence-now">
-          <span>Evidence now</span>
-          <strong>Pathology · treatment timeline · current CT summary</strong>
-          <small>Known gap: original liver imaging and full molecular context</small>
-        </div>
-      </div>
-      <div className="question-boundary">
-        The platform finds expertise. It does not decide treatment.
-      </div>
-    </aside>
-  )
-}
-
-function ReferralOpened({
-  referral,
+function PatientWorklist({
+  patients,
   busy,
-  onPrepare,
-  onReset,
+  onSelect,
 }: {
-  referral: Referral
+  patients: JourneyPatient[]
   busy: boolean
-  onPrepare: () => void
-  onReset: () => void
+  onSelect: (patientId: string) => void
 }) {
-  const present = referral.requirements.filter((item) => item.status === 'present').length
-
   return (
-    <section className="referral-opened">
-      <div className="route-stage">
-        <div className="city">
-          <span>Origin</span>
-          <strong>{referral.sender.country}</strong>
-          <small>{referral.sender.institution}</small>
+    <section className="patient-worklist screen-stage">
+      <div className="section-heading">
+        <div>
+          <p className="eyebrow">Dr Luca Bianchi · Milan</p>
+          <h1>Active patients</h1>
         </div>
-        <div className="route-line">
-          <span>{referral.id}</span>
-          <div>
-            <i />
-          </div>
-          <small>Collaboration requested</small>
-        </div>
-        <div className="city destination">
-          <span>Expert centre</span>
-          <strong>{referral.centre.city}</strong>
-          <small>{referral.clinician.name} · fictional</small>
-        </div>
+        <p>Select the patient whose current care plan calls for external specialist review.</p>
       </div>
-
-      <div className="referral-content">
-        <div className="referral-intro">
-          <p className="eyebrow">Collaboration workspace opened</p>
-          <h1>The request now knows what it still needs.</h1>
-          <p>
-            The selected centre’s review conditions have become part of the case. Available
-            evidence can move now; missing evidence remains an explicit responsibility.
-          </p>
-          <div className="responsibility">
-            <CircleAlert size={19} />
-            <div>
-              <small>Next responsibility</small>
-              <strong>
-                {referral.responsibility.actor}: {referral.responsibility.action}
-              </strong>
-            </div>
-          </div>
-          <p className="referral-meta">
-            Sent by {referral.sender.clinician_name} · {referral.urgency} priority
-          </p>
-        </div>
-
-        <div className="requirements">
-          <div className="requirements-head">
-            <div>
-              <span>Referral readiness</span>
-              <strong>
-                {present} of {referral.requirements.length} evidence conditions available
-              </strong>
-            </div>
-            <span className="version">Case v{referral.version}</span>
-          </div>
-          {referral.requirements.map((requirement) => (
-            <div className={`requirement ${requirement.status}`} key={requirement.key}>
-              <span className="requirement-icon">
-                {requirement.status === 'present' ? <Check size={16} /> : <CircleAlert size={16} />}
+      <div className="patient-list" role="list" aria-label="Active synthetic patients">
+        {patients.map((patient) => (
+          <article
+            className={`patient-card ${patient.referral_candidate ? 'referral-candidate' : ''}`}
+            role="listitem"
+            key={patient.case_id}
+          >
+            <div className="patient-card-heading">
+              <span className="patient-avatar" aria-hidden="true">
+                {patient.display_name
+                  .split(' ')
+                  .map((part) => part[0])
+                  .join('')}
               </span>
               <div>
-                <strong>{requirement.label}</strong>
-                <p>{requirement.rationale}</p>
-              </div>
-              <span>{requirement.status === 'present' ? 'Available' : 'Required'}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="next-chapter">
-        <div>
-          <p className="eyebrow">Next chapter</p>
-          <h2>Prepare the evidence without erasing its origin.</h2>
-          <p>
-            The next increment connects the two institutional sources and builds the
-            source-linked case workspace.
-          </p>
-        </div>
-        <div className="next-actions">
-          <button className="primary-action" onClick={onPrepare} disabled={busy}>
-            <Database size={17} />
-            {busy ? 'Preparing evidence…' : 'Prepare clinical workspace'}
-          </button>
-          <button className="secondary-action" onClick={onReset} disabled={busy}>
-            <RotateCcw size={17} />
-            Reset rehearsal
-          </button>
-        </div>
-      </div>
-    </section>
-  )
-}
-
-function PreparedWorkspace({
-  preparedCase,
-  previousCase,
-  referral,
-  busy,
-  caseUpdateError,
-  reviewState,
-  handoffManifest,
-  researchOpen,
-  researchAuthorizationCode,
-  researchPublication,
-  researchLoading,
-  researchError,
-  inspectedSource,
-  onInspectSource,
-  onDeliverImaging,
-  onSaveReview,
-  onCreateHandoff,
-  onOpenResearch,
-  onResearchAuthorizationCodeChange,
-  onPublishResearch,
-  onCloseSource,
-  onReset,
-}: {
-  preparedCase: PreparedCase
-  previousCase: PreparedCase | null
-  referral: Referral
-  busy: boolean
-  caseUpdateError: CaseUpdateError | null
-  reviewState: HumanReviewState | null
-  handoffManifest: HandoffManifest | null
-  researchOpen: boolean
-  researchAuthorizationCode: string
-  researchPublication: ResearchPublication | null
-  researchLoading: boolean
-  researchError: string | null
-  inspectedSource: EvidenceEnvelope | null
-  onInspectSource: (evidenceId: string, version?: number) => void
-  onDeliverImaging: () => void
-  onSaveReview: (command: {
-    case_version: number
-    reviewer: string
-    opinion: string
-    conditions: {
-      issue_id: string
-      status: ReviewConditionStatus
-      resolution: string
-    }[]
-    next_responsibility: {
-      actor: string
-      action: string
-    }
-  }) => void
-  onCreateHandoff: () => void
-  onOpenResearch: () => void
-  onResearchAuthorizationCodeChange: (value: string) => void
-  onPublishResearch: () => void
-  onCloseSource: () => void
-  onReset: () => void
-}) {
-  return (
-    <section className="workspace">
-      <header className="workspace-head">
-        <div>
-          <p className="eyebrow">Prepared clinical workspace · case v{preparedCase.version}</p>
-          <h1>Evidence together. Origins intact.</h1>
-          <p>{preparedCase.clinical_question}</p>
-        </div>
-        <div className="workspace-route">
-          <span>{referral.sender.country}</span>
-          <ArrowRight size={17} />
-          <span>{referral.centre.country}</span>
-          <small>{preparedCase.evidence.length} source envelopes</small>
-          {preparedCase.version === 1 && (
-            <button className="arrival-action" onClick={onDeliverImaging} disabled={busy}>
-              <Radio size={16} />
-              {busy ? 'Receiving imaging…' : 'Receive late imaging evidence'}
-            </button>
-          )}
-        </div>
-      </header>
-
-      {caseUpdateError && (
-        <section className="update-error" role="status">
-          <CircleAlert size={20} />
-          <div>
-            <strong>Evidence update failed — case v{caseUpdateError.preserved_version} preserved</strong>
-            <p>{caseUpdateError.message}</p>
-            <small>Delivery {caseUpdateError.event_id}</small>
-          </div>
-        </section>
-      )}
-
-      {handoffManifest && (
-        <section className="completed-state" role="status">
-          <Check size={22} />
-          <div>
-            <p className="eyebrow">Clinical presenter path complete</p>
-            <h2>Evidence, judgement, and responsibility are ready to travel together.</h2>
-            <p>
-              Manifest {handoffManifest.id} preserves case v{handoffManifest.evidence_version}
-              {' '}for the clearly labeled narrative MDO handoff.
-            </p>
-          </div>
-        </section>
-      )}
-
-      {preparedCase.delta && previousCase && (
-        <CaseChangeView
-          preparedCase={preparedCase}
-          previousCase={previousCase}
-          onInspectSource={onInspectSource}
-        />
-      )}
-
-      <div className="workspace-alerts">
-        {preparedCase.conflicts.map((conflict) => (
-          <article className="finding conflict" key={conflict.id}>
-            <CircleAlert size={19} />
-            <div>
-              <strong>Unresolved source conflict</strong>
-              <p>{conflict.description}</p>
-              <small>{conflict.resolution}</small>
-            </div>
-          </article>
-        ))}
-        {preparedCase.missing.map((missing) => (
-          <article className="finding missing" key={missing.id}>
-            <CircleAlert size={19} />
-            <div>
-              <strong>Required evidence missing</strong>
-              <p>{missing.description}</p>
-              <button
-                className="text-action"
-                onClick={() => onInspectSource(missing.provenance[0].evidence_id)}
-              >
-                Inspect requirement source <ExternalLink size={14} />
-              </button>
-            </div>
-          </article>
-        ))}
-      </div>
-
-      {reviewState && (
-        <HumanReviewPanel
-          key={`${preparedCase.version}-${reviewState.opinion?.id ?? 'new'}-${reviewState.stale}`}
-          preparedCase={preparedCase}
-          reviewState={reviewState}
-          handoffManifest={handoffManifest}
-          busy={busy}
-          onSaveReview={onSaveReview}
-          onCreateHandoff={onCreateHandoff}
-        />
-      )}
-
-      <div className="workspace-grid">
-        <section className="claim-board" aria-label="Prepared evidence claims">
-          <div className="panel-heading">
-            <div>
-              <p className="eyebrow">Source facts and transformations</p>
-              <h2>Reviewable evidence</h2>
-            </div>
-            <span>{preparedCase.claims.length} claims</span>
-          </div>
-          {preparedCase.claims.map((claim) => (
-            <article className="claim" key={claim.id}>
-              <div className="claim-title">
-                <span>{claim.category}</span>
-                <strong>{claim.label}</strong>
-              </div>
-              <div className="value-pair">
-                <div className="source-value">
-                  <small>Source fact</small>
-                  <p>{claim.raw_value}</p>
-                </div>
-                <ArrowRight size={16} aria-hidden="true" />
-                <div className={claim.normalized_value ? 'normalized-value' : 'unmapped-value'}>
-                  <small>{claim.normalized_value ? 'Normalized value' : 'Unmapped'}</small>
-                  <p>{claim.normalized_value ?? 'No normalized value'}</p>
-                </div>
-              </div>
-              <div className="claim-foot">
-                <span>{claim.transformation}</span>
-                <button
-                  className="source-link"
-                  onClick={() => onInspectSource(claim.provenance[0].evidence_id)}
-                >
-                  <Link2 size={14} />
-                  {claim.provenance[0].source_institution} ·{' '}
-                  {claim.provenance[0].source_format}
-                </button>
-              </div>
-            </article>
-          ))}
-        </section>
-
-        <aside className="synthesis-panel">
-          <div className="panel-heading">
-            <div>
-              <p className="eyebrow">Deterministic synthesis</p>
-              <h2>Bounded case view</h2>
-            </div>
-          </div>
-          <div className="boundary-note">
-            <ShieldCheck size={18} />
-            Uses only the evidence package below. No treatment recommendation or clinical
-            conclusion.
-          </div>
-          <ol className="synthesis-list">
-            {preparedCase.synthesis.map((statement) => (
-              <li key={`${statement.text}-${statement.support_ids.join('-')}`}>
-                <p>{statement.text}</p>
-                <small>Supported by {statement.support_ids.join(', ')}</small>
-              </li>
-            ))}
-          </ol>
-          <div className="warning-stack">
-            <strong>Transformation notes</strong>
-            {preparedCase.warnings.map((warning) => (
-              <p key={warning}>{warning}</p>
-            ))}
-            {preparedCase.unmapped_values.map((value) => (
-              <p className="unmapped" key={value}>
-                Unmapped: {value}
-              </p>
-            ))}
-          </div>
-          <button className="secondary-action" onClick={onReset} disabled={busy}>
-            <RotateCcw size={17} />
-            Reset rehearsal
-          </button>
-        </aside>
-      </div>
-
-      <ResearchEpilogue
-        open={researchOpen}
-        authorizationCode={researchAuthorizationCode}
-        publication={researchPublication}
-        currentCaseVersion={preparedCase.version}
-        loading={researchLoading}
-        error={researchError}
-        onOpen={onOpenResearch}
-        onAuthorizationCodeChange={onResearchAuthorizationCodeChange}
-        onPublish={onPublishResearch}
-      />
-
-      {inspectedSource && (
-        <SourceInspector evidence={inspectedSource} onClose={onCloseSource} />
-      )}
-    </section>
-  )
-}
-
-function ResearchEpilogue({
-  open,
-  authorizationCode,
-  publication,
-  currentCaseVersion,
-  loading,
-  error,
-  onOpen,
-  onAuthorizationCodeChange,
-  onPublish,
-}: {
-  open: boolean
-  authorizationCode: string
-  publication: ResearchPublication | null
-  currentCaseVersion: number
-  loading: boolean
-  error: string | null
-  onOpen: () => void
-  onAuthorizationCodeChange: (value: string) => void
-  onPublish: () => void
-}) {
-  if (!open) {
-    return (
-      <section className="research-boundary" aria-label="Research authorization boundary">
-        <div>
-          <p className="eyebrow">Second horizon · separate authorization context</p>
-          <h2>Clinical access stops here.</h2>
-          <p>
-            The clinical role cannot read or publish the research projection. Continue only as
-            the separately authorized synthetic research role.
-          </p>
-        </div>
-        <div className="role-gate">
-          <span><CircleAlert size={16} /> Clinical role · denied</span>
-          <label>
-            Research authorization code
-            <input
-              type="password"
-              value={authorizationCode}
-              onChange={(event) => onAuthorizationCodeChange(event.target.value)}
-              autoComplete="off"
-            />
-          </label>
-          <button className="primary-action" onClick={onOpen} disabled={!authorizationCode}>
-            <ShieldCheck size={18} />
-            Open synthetic research epilogue
-          </button>
-        </div>
-      </section>
-    )
-  }
-
-  return (
-    <section className="research-epilogue" aria-label="Synthetic research cohort feasibility">
-      <div className="research-heading">
-        <div>
-          <p className="eyebrow">Synthetic researcher · separately authorized</p>
-          <h2>Cohort feasibility, not the clinical workspace.</h2>
-        </div>
-        <span><ShieldCheck size={16} /> Research role authorized</span>
-      </div>
-
-      {loading && (
-        <div className="research-state" role="status">
-          <Database size={20} />
-          Loading approved research projection…
-        </div>
-      )}
-
-      {!loading && error && (
-        <div className="research-state publication-failed" role="alert">
-          <CircleAlert size={20} />
-          <div>
-            <strong>Publication failed</strong>
-            <p>{error}</p>
-            <small>No unconfirmed projection is shown.</small>
-          </div>
-        </div>
-      )}
-
-      {!loading && !error && !publication && (
-        <div className="research-state">
-          <Database size={20} />
-          <div>
-            <strong>No approved projection published</strong>
-            <p>Publish the allowlisted synthetic fields to the local Fabric adapter fake.</p>
-          </div>
-          <button className="primary-action" onClick={onPublish}>
-            Publish approved synthetic projection
-          </button>
-        </div>
-      )}
-
-      {!loading && publication && (
-        <div className="cohort-view">
-          {publication.projection.case_version !== currentCaseVersion && (
-            <div className="research-state publication-stale" role="status">
-              <CircleAlert size={20} />
-              <div>
-                <strong>New clinical evidence is not yet in the research projection</strong>
+                <span className="synthetic-tag">Synthetic patient</span>
+                <h2>{patient.display_name}</h2>
                 <p>
-                  The confirmed projection covers case v{publication.projection.case_version};
-                  case v{currentCaseVersion} is current.
+                  {patient.case_id} · Age {patient.age_band}
                 </p>
               </div>
-              <button className="primary-action" onClick={onPublish}>
-                Publish case v{currentCaseVersion} projection
-              </button>
+              <span className={`care-status ${patient.referral_candidate ? 'attention' : ''}`}>
+                {patient.care_status}
+              </span>
             </div>
-          )}
-          <article className="cohort-count">
-            <span>Feasible synthetic cohort</span>
-            <strong>1</strong>
-            <p>case matches the approved local projection</p>
-          </article>
-          <article className="projection-detail">
-            <div>
-              <span>Purpose</span>
-              <p>{publication.projection.purpose}</p>
+            <p className="patient-diagnosis">{patient.diagnosis}</p>
+            <div className="patient-referral-reason">
+              <strong>Current plan</strong>
+              <span>{patient.current_plan}</span>
             </div>
-            <div className="projection-meta">
-              <span>Projection v{publication.projection.version}</span>
-              <span>{publication.projection.schema_version}</span>
-              <span>Case v{publication.projection.case_version}</span>
-            </div>
-            <dl>
-              {publication.projection.approved_fields.map((field) => (
-                <div key={field}>
-                  <dt>{field.replaceAll('_', ' ')}</dt>
-                  <dd>{publication.projection.record[field]}</dd>
-                </div>
-              ))}
-            </dl>
-          </article>
-          <article className="lineage-view">
-            <h3>Field lineage</h3>
-            {publication.projection.lineage.map((item) => (
-              <div key={item.field}>
-                <strong>{item.field.replaceAll('_', ' ')}</strong>
-                <p>{item.source_institution} · {item.source_format}</p>
-                <small>{item.prepared_claim_id} ← {item.source_record_id} · {item.source_pointer}</small>
-              </div>
-            ))}
-            <p className="exclusion-note">
-              Excluded: {publication.projection.excluded_categories.join(' · ')}
-            </p>
-            <small>Receipt {publication.receipt.id} · {publication.receipt.adapter}</small>
-          </article>
-        </div>
-      )}
-    </section>
-  )
-}
-
-function HumanReviewPanel({
-  preparedCase,
-  reviewState,
-  handoffManifest,
-  busy,
-  onSaveReview,
-  onCreateHandoff,
-}: {
-  preparedCase: PreparedCase
-  reviewState: HumanReviewState
-  handoffManifest: HandoffManifest | null
-  busy: boolean
-  onSaveReview: (command: {
-    case_version: number
-    reviewer: string
-    opinion: string
-    conditions: {
-      issue_id: string
-      status: ReviewConditionStatus
-      resolution: string
-    }[]
-    next_responsibility: {
-      actor: string
-      action: string
-    }
-  }) => void
-  onCreateHandoff: () => void
-}) {
-  const currentOpinion =
-    reviewState.opinion?.case_version === preparedCase.version ? reviewState.opinion : null
-  const [reviewer, setReviewer] = useState(currentOpinion?.reviewer ?? 'Dr Eva van Dijk')
-  const [opinion, setOpinion] = useState(currentOpinion?.opinion ?? '')
-  const [nextActor, setNextActor] = useState(
-    currentOpinion?.next_responsibility.actor ?? 'Utrecht colorectal MDO coordinator',
-  )
-  const [nextAction, setNextAction] = useState(
-    currentOpinion?.next_responsibility.action ??
-      'Schedule multidisciplinary review of the versioned synthetic case.',
-  )
-  const [conditions, setConditions] = useState<ReviewCondition[]>(
-    currentOpinion?.conditions ?? reviewState.required_conditions,
-  )
-
-  function updateCondition(issueId: string, update: Partial<ReviewCondition>) {
-    setConditions((items) =>
-      items.map((item) => (item.issue_id === issueId ? { ...item, ...update } : item)),
-    )
-  }
-
-  function submitReview() {
-    onSaveReview({
-      case_version: preparedCase.version,
-      reviewer,
-      opinion,
-      conditions: conditions.map((condition) => ({
-        issue_id: condition.issue_id,
-        status: condition.status,
-        resolution: condition.resolution,
-      })),
-      next_responsibility: {
-        actor: nextActor,
-        action: nextAction,
-      },
-    })
-  }
-
-  return (
-    <section className="human-review" aria-label="Human review and MDO handoff">
-      <div className="review-heading">
-        <div>
-          <p className="eyebrow">Human judgement · bound to case v{preparedCase.version}</p>
-          <h2>Opinion, conditions, and next responsibility</h2>
-        </div>
-        <span className={reviewState.handoff_ready ? 'ready-state ready' : 'ready-state'}>
-          {reviewState.handoff_ready ? 'Ready to create handoff' : 'Handoff gated'}
-        </span>
-      </div>
-
-      {reviewState.stale && reviewState.opinion && (
-        <div className="stale-review" role="status">
-          <History size={19} />
-          <div>
-            <strong>Previous opinion is stale</strong>
-            <p>
-              Opinion {reviewState.opinion.id} covers case v{reviewState.opinion.case_version}.
-              Case v{preparedCase.version} requires a new human review and cannot inherit approval.
-            </p>
-          </div>
-        </div>
-      )}
-
-      <div className="review-layout">
-        <div className="review-form">
-          <label>
-            Reviewing clinician
-            <input value={reviewer} onChange={(event) => setReviewer(event.target.value)} />
-          </label>
-          <label>
-            Considered human opinion
-            <textarea
-              rows={4}
-              value={opinion}
-              onChange={(event) => setOpinion(event.target.value)}
-              placeholder="Record the clinical opinion without presenting it as an automated conclusion."
-            />
-          </label>
-          <div className="responsibility-fields">
-            <label>
-              Next responsible actor
-              <input value={nextActor} onChange={(event) => setNextActor(event.target.value)} />
-            </label>
-            <label>
-              Explicit next action
-              <input value={nextAction} onChange={(event) => setNextAction(event.target.value)} />
-            </label>
-          </div>
-          <button
-            className="primary-action"
-            onClick={submitReview}
-            disabled={busy || !reviewer.trim() || !opinion.trim() || !nextActor.trim() || !nextAction.trim()}
-          >
-            <ClipboardCheck size={18} />
-            {busy ? 'Saving review…' : `Save opinion for case v${preparedCase.version}`}
-          </button>
-        </div>
-
-        <div className="review-conditions">
-          <div className="conditions-heading">
-            <strong>Required evidence and review conditions</strong>
-            <small>Every item needs an explicit resolution before handoff.</small>
-          </div>
-          {conditions.map((condition) => (
-            <article className="review-condition" key={condition.issue_id}>
-              <label className="condition-toggle">
-                <input
-                  type="checkbox"
-                  checked={condition.status === 'resolved'}
-                  onChange={(event) =>
-                    updateCondition(condition.issue_id, {
-                      status: event.target.checked ? 'resolved' : 'open',
-                    })
-                  }
-                />
-                <span>
-                  <strong>
-                    {condition.kind === 'required_evidence'
-                      ? 'Required evidence condition'
-                      : 'Review condition'}
-                  </strong>
-                  <small>{condition.issue_id}</small>
-                </span>
-              </label>
-              <p>{condition.description}</p>
-              <label>
-                Resolution note
-                <input
-                  value={condition.resolution}
-                  onChange={(event) =>
-                    updateCondition(condition.issue_id, { resolution: event.target.value })
-                  }
-                  placeholder="Required when marked resolved"
-                />
-              </label>
-            </article>
-          ))}
-        </div>
-      </div>
-
-      <div className="handoff-zone">
-        <div>
-          <p className="eyebrow">Versioned narrative handoff</p>
-          <h3>Continue into the autonomous MDO demonstration</h3>
-          <p>
-            Version one does not synchronize runtime state. The MDO uses a separate backend;
-            this app creates a controlled deep link from a persisted continuity manifest.
-          </p>
-          {!reviewState.handoff_ready && (
-            <ul>
-              {reviewState.blockers.map((blocker) => (
-                <li key={blocker}>{blocker}</li>
-              ))}
-            </ul>
-          )}
-        </div>
-        <button
-          className="handoff-action"
-          onClick={onCreateHandoff}
-          disabled={busy || !reviewState.handoff_ready}
-        >
-          <ExternalLink size={18} />
-          Create MDO handoff manifest
-        </button>
-      </div>
-
-      {handoffManifest && (
-        <article className="handoff-manifest" aria-label="MDO handoff manifest">
-          <div className="manifest-title">
-            <div>
-              <p className="eyebrow">Manifest v{handoffManifest.version}</p>
-              <h3>{handoffManifest.id}</h3>
-            </div>
-            <span>{handoffManifest.synthetic_labels.join(' · ')}</span>
-          </div>
-          <dl>
-            <div>
-              <dt>Case ID</dt>
-              <dd>{handoffManifest.case_id}</dd>
-            </div>
-            <div>
-              <dt>Evidence version</dt>
-              <dd>Case v{handoffManifest.evidence_version}</dd>
-            </div>
-            <div>
-              <dt>Clinical question</dt>
-              <dd>{handoffManifest.clinical_question}</dd>
-            </div>
-            <div>
-              <dt>Next actor and action</dt>
-              <dd>
-                {handoffManifest.responsibility.actor}: {handoffManifest.responsibility.action}
-              </dd>
-            </div>
-            <div>
-              <dt>Unresolved issues carried forward</dt>
-              <dd>
-                {handoffManifest.unresolved_issues.length
-                  ? handoffManifest.unresolved_issues.join(' · ')
-                  : 'None'}
-              </dd>
-            </div>
-          </dl>
-          <p className="backend-notice">{handoffManifest.backend_notice}</p>
-          <a
-            className="primary-action"
-            href={handoffManifest.launch_url}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Launch separate MDO demonstration
-            <ArrowRight size={18} />
-          </a>
-        </article>
-      )}
-    </section>
-  )
-}
-
-function CaseChangeView({
-  preparedCase,
-  previousCase,
-  onInspectSource,
-}: {
-  preparedCase: PreparedCase
-  previousCase: PreparedCase
-  onInspectSource: (evidenceId: string, version?: number) => void
-}) {
-  const delta = preparedCase.delta
-  if (!delta) return null
-
-  return (
-    <section className="case-change" aria-label="Case version comparison">
-      <div className="change-heading">
-        <div>
-          <p className="eyebrow">Automatic evidence refresh · no new AI prompt</p>
-          <h2>What changed from case v{delta.from_version} to v{delta.to_version}</h2>
-        </div>
-        <span className="version-transition">
-          <History size={16} />
-          Immutable v{previousCase.version} retained
-        </span>
-      </div>
-
-      <div className="before-after">
-        <article>
-          <span>Before · case v{previousCase.version}</span>
-          <strong>Imaging evidence incomplete</strong>
-          <p>
-            {previousCase.evidence.length} source envelopes were prepared before the late
-            imaging delivery.
-          </p>
-          <div className="version-sources">
-            {previousCase.evidence.slice(0, 3).map((item) => (
+            <div className="patient-card-actions">
+              <small>Updated {patient.last_updated}</small>
               <button
-                key={item.source_identifier}
-                onClick={() => onInspectSource(item.source_identifier, previousCase.version)}
+                className={patient.referral_candidate ? 'primary-action' : 'secondary-action'}
+                type="button"
+                disabled={busy || !patient.referral_candidate}
+                onClick={() => onSelect(patient.case_id)}
               >
-                <Link2 size={13} />
-                {item.source_format}
+                {patient.referral_candidate
+                  ? 'Prepare specialist referral'
+                  : 'No external referral due'}
+                {patient.referral_candidate && <ArrowRight size={17} />}
               </button>
-            ))}
-          </div>
-        </article>
-        <GitCompare size={22} aria-hidden="true" />
-        <article className="after">
-          <span>After · case v{preparedCase.version}</span>
-          <strong>Baseline and restaging imaging linked</strong>
-          <p>
-            {preparedCase.evidence.length} source envelopes now support longitudinal review.
-          </p>
-          <div className="version-sources">
-            {delta.added_evidence.map((item) => (
-              <button
-                key={item.evidence_id}
-                onClick={() => onInspectSource(item.evidence_id, preparedCase.version)}
-              >
-                <Link2 size={13} />
-                {item.label}
-              </button>
-            ))}
-          </div>
-        </article>
-      </div>
-
-      <div className="delta-grid">
-        <article>
-          <h3>Added evidence</h3>
-          {delta.added_evidence.map((item) => (
-            <button
-              className="delta-source"
-              key={item.evidence_id}
-              onClick={() => onInspectSource(item.evidence_id, preparedCase.version)}
-            >
-              <strong>{item.label}</strong>
-              <small>{item.source_institution} · {item.source_format}</small>
-            </button>
-          ))}
-        </article>
-        <article>
-          <h3>Changed findings & conclusions</h3>
-          {delta.changed_findings.map((item) => (
-            <div className="delta-item" key={item.subject}>
-              <strong>{item.subject}</strong>
-              <p><b>Before:</b> {item.before}</p>
-              <p><b>After:</b> {item.after}</p>
-              {item.conclusion_requires_reassessment && (
-                <small>Human conclusion requires reassessment</small>
-              )}
-            </div>
-          ))}
-        </article>
-        <article>
-          <h3>Remaining uncertainty</h3>
-          <ul>
-            {delta.remaining_uncertainty.map((item) => <li key={item}>{item}</li>)}
-          </ul>
-        </article>
-        <article>
-          <h3>Affected human questions</h3>
-          <ol>
-            {delta.affected_human_questions.map((item) => <li key={item}>{item}</li>)}
-          </ol>
-        </article>
-      </div>
-    </section>
-  )
-}
-
-function SourceInspector({
-  evidence,
-  onClose,
-}: {
-  evidence: EvidenceEnvelope
-  onClose: () => void
-}) {
-  const closeButton = useRef<HTMLButtonElement>(null)
-  const dialog = useRef<HTMLElement>(null)
-  const previousFocus = useRef<HTMLElement | null>(null)
-  const closeRef = useRef(onClose)
-
-  useEffect(() => {
-    closeRef.current = onClose
-  }, [onClose])
-
-  useEffect(() => {
-    previousFocus.current =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null
-    const main = document.querySelector('main')
-    main?.setAttribute('inert', '')
-    closeButton.current?.focus()
-    function handleDialogKeyboard(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        closeRef.current()
-        return
-      }
-      if (event.key !== 'Tab' || !dialog.current) return
-      const focusable = Array.from(
-        dialog.current.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-        ),
-      )
-      if (focusable.length === 0) {
-        event.preventDefault()
-        return
-      }
-      const first = focusable[0]
-      const last = focusable.at(-1)
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault()
-        last?.focus()
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault()
-        first.focus()
-      }
-    }
-    window.addEventListener('keydown', handleDialogKeyboard)
-    return () => {
-      window.removeEventListener('keydown', handleDialogKeyboard)
-      main?.removeAttribute('inert')
-      previousFocus.current?.focus()
-    }
-  }, [])
-
-  return createPortal(
-    <aside
-      ref={dialog}
-      className="source-inspector"
-      aria-label="Source evidence inspector"
-      role="dialog"
-      aria-modal="true"
-    >
-      <div className="source-inspector-head">
-        <div>
-          <p className="eyebrow">Original fixture inspection</p>
-          <h2>{evidence.source_format}</h2>
-        </div>
-        <button ref={closeButton} onClick={onClose} aria-label="Close source inspector">
-          ×
-        </button>
-      </div>
-      <dl>
-        <div>
-          <dt>Institution</dt>
-          <dd>{evidence.source_institution}</dd>
-        </div>
-        <div>
-          <dt>Source ID</dt>
-          <dd>{evidence.source_identifier}</dd>
-        </div>
-        <div>
-          <dt>Observed</dt>
-          <dd>{new Date(evidence.observed_at).toLocaleString()}</dd>
-        </div>
-        <div>
-          <dt>Transformation</dt>
-          <dd>{evidence.transformation_status}</dd>
-        </div>
-        <div>
-          <dt>Fixture</dt>
-          <dd>{evidence.retrieval_reference}</dd>
-        </div>
-      </dl>
-      <div className="source-facts">
-        {evidence.facts.map((fact) => (
-          <article key={`${fact.key}-${fact.source_pointer}`}>
-            <FileSearch size={16} />
-            <div>
-              <strong>{fact.label}</strong>
-              <p>{fact.raw_value}</p>
-              <small>{fact.source_pointer}</small>
             </div>
           </article>
         ))}
       </div>
-      <div className="original-record">
+    </section>
+  )
+}
+
+function SelectedPatient({ patient }: { patient: JourneyPatient }) {
+  return (
+    <section className="selected-patient screen-stage">
+      <div className="section-heading">
         <div>
-          <strong>Preserved original record</strong>
-          <small>{evidence.original_media_type}</small>
+          <p className="eyebrow">
+            {patient.display_name} · {patient.case_id}
+          </p>
+          <h1>Patient selected for referral preparation</h1>
         </div>
-        <pre>{evidence.original_content}</pre>
+        <p>The next increment adds the federated checks of Milan hospital systems.</p>
       </div>
-      <small className="hash">SHA-256 {evidence.content_hash}</small>
-    </aside>,
-    document.body,
+      <article className="selected-patient-summary">
+        <span className="patient-avatar" aria-hidden="true">
+          {patient.display_name
+            .split(' ')
+            .map((part) => part[0])
+            .join('')}
+        </span>
+        <div>
+          <h2>{patient.display_name}</h2>
+          <p>{patient.diagnosis}</p>
+          <strong>{patient.current_plan}</strong>
+        </div>
+        <span className="stage-ready">
+          <Check size={17} />
+          Ready for local data check
+        </span>
+      </article>
+      <div className="next-increment-note" role="status">
+        <ShieldCheck size={18} />
+        <span>
+          <strong>Journey foundation complete</strong>
+          Federated Milan source checks are the next implementation increment.
+        </span>
+      </div>
+    </section>
+  )
+}
+
+function ActivityTimeline({ activity }: { activity: JourneyActivity[] }) {
+  return (
+    <aside className="activity-timeline" aria-label="Referral activity">
+      <div className="timeline-heading">
+        <div>
+          <p className="eyebrow">Referral activity</p>
+          <h2>Clinical actions</h2>
+        </div>
+        <span>{activity.length}</span>
+      </div>
+      {activity.length === 0 ? (
+        <div className="timeline-empty">
+          <History size={22} />
+          <p>Workspace and patient actions will appear here.</p>
+        </div>
+      ) : (
+        <ol>
+          {[...activity].reverse().map((event) => (
+            <li key={event.id}>
+              <span className="timeline-dot" aria-hidden="true" />
+              <div>
+                <small>{event.institution}</small>
+                <strong>{event.title}</strong>
+                <p>{event.detail}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+      <div className="timeline-boundary">
+        <Building2 size={17} />
+        <p>
+          Hospital-owned source queries and cross-hospital approvals are added in the next
+          increments.
+        </p>
+      </div>
+    </aside>
   )
 }
 
