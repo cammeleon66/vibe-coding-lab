@@ -15,6 +15,11 @@ import { useEffect, useRef, useState } from 'react'
 import './App.css'
 
 type JourneyRole = 'milan' | 'utrecht'
+type JourneyPhase =
+  | 'regional_exchange'
+  | 'scale_reveal'
+  | 'international_referral'
+type RegionalSourceId = 'utrecht_patient_summary' | 'utrecht_imaging'
 type JourneyStageId =
   | 'patient'
   | 'local_data'
@@ -72,6 +77,11 @@ interface JourneyActivity {
     | 'evidence_update_approved'
     | 'final_opinion_recorded'
     | 'mdo_accepted'
+    | 'regional_source_queried'
+    | 'regional_sharing_approved'
+    | 'regional_exchange_completed'
+    | 'scale_reveal_opened'
+    | 'international_referral_opened'
   actor: string
   institution: string
   title: string
@@ -97,7 +107,36 @@ interface SourceCheck {
   error: string | null
 }
 
+interface RegionalSourceCheck {
+  source_id: RegionalSourceId
+  source_label: string
+  endpoint: string
+  owner_institution: string
+  requesting_institution: string
+  status: 'complete'
+  records: {
+    id: string
+    label: string
+    status: 'available' | 'missing'
+    detail: string
+  }[]
+  checked_at: string
+}
+
 interface JourneySnapshot {
+  regional_exchange: {
+    phase: JourneyPhase
+    stage: 'problem' | 'source_check' | 'sharing_approval' | 'complete'
+    patient_label: string
+    case_id: string
+    requesting_institution: string
+    source_institution: string
+    problem: string
+    source_checks: Partial<Record<RegionalSourceId, RegionalSourceCheck>>
+    sharing_approved: boolean
+    approved_by: string | null
+    next_responsibility: string | null
+  }
   active_role: JourneyRole | null
   selected_patient_id: string | null
   roles: JourneyRoleView[]
@@ -175,6 +214,8 @@ interface JourneySnapshot {
 }
 
 type Screen =
+  | 'regional'
+  | 'scale'
   | 'role'
   | 'patients'
   | 'selected'
@@ -199,7 +240,7 @@ async function requestJson<T>(url: string, options?: RequestInit): Promise<T> {
 
 function App() {
   const [snapshot, setSnapshot] = useState<JourneySnapshot | null>(null)
-  const [screen, setScreen] = useState<Screen>('role')
+  const [screen, setScreen] = useState<Screen>('regional')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -209,7 +250,11 @@ function App() {
     requestJson<JourneySnapshot>('/api/journey')
       .then((restored) => {
         setSnapshot(restored)
-        if (restored.active_role === 'milan') {
+        if (restored.regional_exchange.phase === 'regional_exchange') {
+          setScreen('regional')
+        } else if (restored.regional_exchange.phase === 'scale_reveal') {
+          setScreen('scale')
+        } else if (restored.active_role === 'milan') {
           setScreen(
             restored.mdo_outcome
               ? 'outcome'
@@ -223,6 +268,8 @@ function App() {
           )
         } else if (restored.active_role === 'utrecht') {
           setScreen(restored.update_approved_versions.length > 0 ? 'mdo' : 'utrecht')
+        } else {
+          setScreen('role')
         }
       })
       .catch((reason: unknown) => {
@@ -321,8 +368,8 @@ function App() {
     try {
       await requestJson<void>('/api/reset', { method: 'POST' })
       setSnapshot(await requestJson<JourneySnapshot>('/api/journey'))
-      setScreen('role')
-      setNotice('The synthetic referral journey has been reset.')
+      setScreen('regional')
+      setNotice('The synthetic collaboration journey has been reset.')
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'The journey could not be reset.')
     } finally {
@@ -365,7 +412,7 @@ function App() {
           </span>
           <span>
             <strong>European Oncology Exchange</strong>
-            <small>Synthetic cross-border referral demonstration</small>
+            <small>From nearby hospitals to European collaboration</small>
           </span>
         </div>
         <div className="presenter-controls">
@@ -375,15 +422,17 @@ function App() {
               {snapshot.roles.find((role) => role.id === snapshot.active_role)?.clinician_name}
             </span>
           )}
-          <button
-            className="header-action"
-            type="button"
-            onClick={() => setScreen('role')}
-            disabled={busy}
-          >
-            <Users size={15} />
-            Clinical roles
-          </button>
+          {snapshot?.regional_exchange.phase === 'international_referral' && (
+            <button
+              className="header-action"
+              type="button"
+              onClick={() => setScreen('role')}
+              disabled={busy}
+            >
+              <Users size={15} />
+              Clinical roles
+            </button>
+          )}
           <button className="header-action" type="button" onClick={resetDemo} disabled={busy}>
             <RotateCcw size={15} />
             Reset
@@ -391,7 +440,7 @@ function App() {
         </div>
       </header>
 
-      {snapshot && (
+      {snapshot?.regional_exchange.phase === 'international_referral' && (
         <ol className="journey-rail" aria-label="Referral stages">
           {snapshot.stages.map((stage, index) => (
             <li
@@ -449,6 +498,21 @@ function App() {
       ) : (
         <div className="journey-layout">
           <section className="journey-screen" ref={screenRef}>
+            {screen === 'regional' && (
+              <RegionalExchange
+                snapshot={snapshot}
+                busy={busy}
+                onAction={applyAction}
+                onOpenScale={() => setScreen('scale')}
+              />
+            )}
+            {screen === 'scale' && (
+              <ScaleReveal
+                busy={busy}
+                onAction={applyAction}
+                onOpenReferral={() => setScreen('role')}
+              />
+            )}
             {screen === 'role' && (
               <RolePicker roles={snapshot.roles} busy={busy} onEnter={enterRole} />
             )}
@@ -521,6 +585,228 @@ function App() {
         <span>Clinical roles and hospital systems are simulated</span>
       </footer>
     </main>
+  )
+}
+
+const regionalSourceOrder: {
+  id: RegionalSourceId
+  label: string
+  action: string
+}[] = [
+  {
+    id: 'utrecht_patient_summary',
+    label: 'Patient-summary service',
+    action: 'Check patient summary',
+  },
+  {
+    id: 'utrecht_imaging',
+    label: 'Imaging archive',
+    action: 'Check source imaging',
+  },
+]
+
+function RegionalExchange({
+  snapshot,
+  busy,
+  onAction,
+  onOpenScale,
+}: {
+  snapshot: JourneySnapshot
+  busy: boolean
+  onAction: (action: object) => Promise<JourneySnapshot | null>
+  onOpenScale: () => void
+}) {
+  const exchange = snapshot.regional_exchange
+  const nextSource = regionalSourceOrder.find(
+    (source) => exchange.source_checks[source.id] === undefined,
+  )
+
+  async function openScale() {
+    const updated = await onAction({ type: 'open_scale_reveal' })
+    if (updated) onOpenScale()
+  }
+
+  return (
+    <section className="regional-exchange screen-stage">
+      <div className="section-heading">
+        <div>
+          <p className="eyebrow">Phase 1 · A problem around the corner</p>
+          <h1>Two Utrecht hospitals need one clear answer</h1>
+        </div>
+        <p>
+          Start small: solve a regional care problem without moving both hospitals into one
+          database.
+        </p>
+      </div>
+
+      <article className="regional-case">
+        <div>
+          <span className="synthetic-tag">Synthetic regional case</span>
+          <h2>{exchange.patient_label}</h2>
+          <p>{exchange.case_id} · Colorectal oncology</p>
+        </div>
+        <strong>{exchange.problem}</strong>
+      </article>
+
+      <div className="regional-route" aria-label="Regional hospital exchange">
+        <article>
+          <span>Needs the evidence</span>
+          <Building2 size={28} />
+          <h2>{exchange.requesting_institution}</h2>
+          <p>Responsible for today's oncology treatment review.</p>
+        </article>
+        <div className="regional-route-arrow" aria-hidden="true">
+          <ArrowRight size={26} />
+          <small>Authorized API requests</small>
+        </div>
+        <article>
+          <span>Owns the source</span>
+          <ShieldCheck size={28} />
+          <h2>{exchange.source_institution}</h2>
+          <p>Keeps the original patient record and MRI images.</p>
+        </article>
+      </div>
+
+      <div className="regional-source-grid">
+        {regionalSourceOrder.map((source) => {
+          const check = exchange.source_checks[source.id]
+          return (
+            <article className={`regional-source ${check ? 'complete' : ''}`} key={source.id}>
+              <div>
+                <small>{source.label}</small>
+                <strong>{check ? '200 OK' : 'Not queried'}</strong>
+              </div>
+              {check ? (
+                <>
+                  <code>{check.endpoint}</code>
+                  <p>
+                    {check.records.length} source-linked records found. Originals remain at{' '}
+                    {check.owner_institution}.
+                  </p>
+                </>
+              ) : (
+                <p>The exchange has not requested this hospital-owned source yet.</p>
+              )}
+            </article>
+          )
+        })}
+      </div>
+
+      <div className="stage-completion regional-actions">
+        <div className="next-increment-note" role="status">
+          <Network size={18} />
+          <span>
+            <strong>
+              {exchange.sharing_approved
+                ? 'Regional exchange complete'
+                : 'The agent finds evidence; the clinician controls sharing'}
+            </strong>
+            {exchange.next_responsibility ??
+              'Only the approved summary and report cross the institutional boundary.'}
+          </span>
+        </div>
+        {nextSource ? (
+          <button
+            className="primary-action"
+            type="button"
+            disabled={busy}
+            onClick={() =>
+              void onAction({ type: 'query_regional_source', source_id: nextSource.id })
+            }
+          >
+            {nextSource.action}
+            <ArrowRight size={17} />
+          </button>
+        ) : !exchange.sharing_approved ? (
+          <button
+            className="primary-action"
+            type="button"
+            disabled={busy}
+            onClick={() => void onAction({ type: 'approve_regional_exchange' })}
+          >
+            Approve regional sharing
+            <ShieldCheck size={17} />
+          </button>
+        ) : (
+          <button className="primary-action" type="button" disabled={busy} onClick={openScale}>
+            See how the same pattern scales
+            <ArrowRight size={17} />
+          </button>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function ScaleReveal({
+  busy,
+  onAction,
+  onOpenReferral,
+}: {
+  busy: boolean
+  onAction: (action: object) => Promise<JourneySnapshot | null>
+  onOpenReferral: () => void
+}) {
+  async function openReferral() {
+    const updated = await onAction({ type: 'open_international_referral' })
+    if (updated) onOpenReferral()
+  }
+
+  return (
+    <section className="scale-reveal screen-stage">
+      <div className="section-heading">
+        <div>
+          <p className="eyebrow">Phase 2 · The same pattern at European scale</p>
+          <h1>Geography changes. The trust rules do not.</h1>
+        </div>
+        <p>
+          The nearby-hospital exchange becomes a reusable network pattern rather than a one-off
+          connection.
+        </p>
+      </div>
+
+      <div className="scale-map" aria-label="Collaboration scale">
+        {[
+          ['Utrecht', 'Nearby hospitals'],
+          ['Netherlands', 'Regional networks'],
+          ['Germany + Italy', 'International participants'],
+          ['Europe', 'Care and research network'],
+        ].map(([place, scope], index) => (
+          <article key={place}>
+            <span>{String(index + 1).padStart(2, '0')}</span>
+            <Network size={26} />
+            <h2>{place}</h2>
+            <p>{scope}</p>
+          </article>
+        ))}
+      </div>
+
+      <article className="scale-invariant">
+        <ShieldCheck size={24} />
+        <div>
+          <h2>One federated collaboration pattern</h2>
+          <p>
+            Hospital-owned sources stay where they are. Authorized APIs expose permitted
+            evidence, provenance stays attached, clinicians approve sharing, and every exchange
+            ends with a named responsibility.
+          </p>
+        </div>
+      </article>
+
+      <div className="stage-completion">
+        <div className="next-increment-note">
+          <Building2 size={18} />
+          <span>
+            <strong>Now prove the cross-border loop in detail</strong>
+            Follow a complete synthetic oncology referral from Milan to Utrecht.
+          </span>
+        </div>
+        <button className="primary-action" type="button" disabled={busy} onClick={openReferral}>
+          Open Milan-to-Utrecht referral
+          <ArrowRight size={17} />
+        </button>
+      </div>
+    </section>
   )
 }
 
@@ -1543,6 +1829,13 @@ function MilanOutcome({
 
 function ApiActivity({ snapshot }: { snapshot: JourneySnapshot }) {
   const calls = [
+    ...Object.values(snapshot.regional_exchange.source_checks).map((check) => ({
+      id: check.source_id,
+      system: check.source_label,
+      endpoint: check.endpoint,
+      status: '200 OK',
+      detail: `${check.records.length} source-linked records found at ${check.owner_institution}`,
+    })),
     ...snapshot.source_checks.map((check) => ({
       id: check.source_id,
       system: check.source_label,
@@ -1600,7 +1893,7 @@ function ApiActivity({ snapshot }: { snapshot: JourneySnapshot }) {
       {calls.length === 0 ? (
         <div className="timeline-empty">
           <Network size={22} />
-          <p>Source-system requests will appear after a patient is selected.</p>
+          <p>Source-system requests will appear as the regional exchange begins.</p>
         </div>
       ) : (
         <ol>
@@ -1634,7 +1927,7 @@ function ActivityTimeline({ activity }: { activity: JourneyActivity[] }) {
     <aside className="activity-timeline" aria-label="Referral activity" tabIndex={0}>
       <div className="timeline-heading">
         <div>
-          <p className="eyebrow">Referral activity</p>
+          <p className="eyebrow">Collaboration activity</p>
           <h2>Clinical actions</h2>
         </div>
         <span>{activity.length}</span>

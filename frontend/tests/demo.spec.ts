@@ -18,6 +18,37 @@ async function expectNoSeriousAccessibilityViolations(
   expect(violations).toEqual([])
 }
 
+async function completeRegionalOpening(
+  page: import('@playwright/test').Page,
+  projectName?: string,
+) {
+  await expect(
+    page.getByRole('heading', { name: 'Two Utrecht hospitals need one clear answer' }),
+  ).toBeVisible()
+  await page.getByRole('button', { name: 'Check patient summary' }).click()
+  await page.getByRole('button', { name: 'Check source imaging' }).click()
+  await page.getByRole('button', { name: 'Approve regional sharing' }).click()
+  await expect(page.getByText('Regional exchange complete')).toBeVisible()
+  if (projectName) {
+    await page.screenshot({
+      path: `../docs/demo/evidence/regional-proof-${projectName}.png`,
+      fullPage: true,
+    })
+  }
+  await page.getByRole('button', { name: 'See how the same pattern scales' }).click()
+  await expect(
+    page.getByRole('heading', { name: 'Geography changes. The trust rules do not.' }),
+  ).toBeVisible()
+  if (projectName) {
+    await page.screenshot({
+      path: `../docs/demo/evidence/scale-reveal-${projectName}.png`,
+      fullPage: true,
+    })
+  }
+  await page.getByRole('button', { name: 'Open Milan-to-Utrecht referral' }).click()
+  await expect(page.getByRole('heading', { name: 'Choose a clinical workspace' })).toBeVisible()
+}
+
 test.beforeEach(async ({ page }) => {
   const accessCode = process.env.DEMO_ACCESS_CODE
   if (accessCode) {
@@ -33,7 +64,7 @@ test('completes the closed-loop referral journey', async ({ page }, testInfo) =>
   const startedAt = Date.now()
   await page.goto('/')
 
-  await expect(page.getByRole('heading', { name: 'Choose a clinical workspace' })).toBeVisible()
+  await completeRegionalOpening(page, testInfo.project.name)
   await expect(page.getByRole('button', { name: 'Utrecht has no incoming referral yet.' }))
     .toBeDisabled()
 
@@ -124,7 +155,7 @@ test('completes the closed-loop referral journey', async ({ page }, testInfo) =>
   ).toHaveAttribute('aria-current', 'step')
   await expectNoSeriousAccessibilityViolations(page)
   expect(Date.now() - startedAt).toBeLessThan(120_000)
-  const evidencePrefix = process.env.PLAYWRIGHT_BASE_URL ? 'live-closed-loop' : 'closed-loop'
+  const evidencePrefix = process.env.DEMO_ACCESS_CODE ? 'live-closed-loop' : 'closed-loop'
   await page.screenshot({
     path: `../docs/demo/evidence/${evidencePrefix}-${testInfo.project.name}.png`,
     fullPage: true,
@@ -138,13 +169,17 @@ test('supports keyboard navigation and has no serious accessibility violations',
   page,
 }) => {
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: 'Choose a clinical workspace' })).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: 'Two Utrecht hospitals need one clear answer' }),
+  ).toBeVisible()
 
+  await page.getByRole('button', { name: 'Reset' }).focus()
+  await expect(page.getByRole('button', { name: 'Reset' })).toBeFocused()
+  await expectNoSeriousAccessibilityViolations(page)
+
+  await completeRegionalOpening(page)
   await page.getByRole('button', { name: 'Clinical roles' }).focus()
   await expect(page.getByRole('button', { name: 'Clinical roles' })).toBeFocused()
-  await page.keyboard.press('Tab')
-  await expect(page.getByRole('button', { name: 'Reset' })).toBeFocused()
-
   await expectNoSeriousAccessibilityViolations(page)
   await page.getByRole('button', { name: 'Open Milan workspace' }).click()
   await expect(page.getByRole('heading', { name: 'Active patients' })).toBeFocused()

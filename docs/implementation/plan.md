@@ -1,10 +1,49 @@
 # Implementation plan: European oncology collaboration demo
 
-**Status:** Closed-loop redesign planned; implementation paused until issue sequence is established
+**Status:** Closed-loop referral complete; local-to-European opening in progress
 **Date:** 2026-09-24
-**Cloud deployment:** Existing private Azure deployment remains live; no redesign deployment has been approved or attempted
+**Cloud deployment:** The closed-loop referral is live on the approved private
+Azure baseline. The local-first opening reuses that baseline without new
+services or trust-boundary changes.
 
 ## Closed-loop redesign plan
+
+### Local-to-European storyline extension
+
+#### INC-015: Regional proof and European scale reveal
+
+**Status:** Planned
+
+**Depends on:** INC-014.
+
+**Outcome:** The demonstration begins with a short Utrecht-to-Utrecht
+missing-imaging exchange, proves the federated pattern locally, then zooms out
+to the existing Milan-to-Utrecht international referral.
+
+**Scope:**
+
+- Add persisted local-exchange state and typed journey actions behind
+  `ReferralJourney.apply(action)`.
+- Show two clearly synthetic nearby Utrecht institutions and one concrete
+  missing-imaging problem.
+- Make patient-summary and imaging-system requests visible in the persistent
+  API activity panel.
+- Require explicit local clinician approval before the exchange completes.
+- Add a Utrecht → Netherlands → Germany/Italy → Europe scale transition.
+- Preserve the existing international referral without duplicating its rules.
+- Update presenter guidance, browser tests, screenshots, and live verification.
+
+**Acceptance criteria:**
+
+- The opening problem is understandable without explaining European referral
+  policy.
+- Local source ownership, provenance, sharing approval, and next responsibility
+  are explicit.
+- The scale transition states that geography changes but trust rules do not.
+- The international phase starts only after the local proof is complete.
+- Reset and refresh preserve correct local/international phase state.
+- Desktop/mobile, keyboard, axe, backend, frontend, and protected-live checks
+  pass without adding Azure services.
 
 ### Outcome
 
@@ -18,7 +57,7 @@ Deliver a five-minute synthetic referral from Milan to Utrecht that proves:
 - the process closes with a Utrecht specialist opinion, MDO acceptance, and a returned next action in Milan.
 
 The approved journey and language are recorded in `docs/product/product-brief.md`
-version 0.3 and `CONTEXT.md`.
+version 0.4 and `CONTEXT.md`.
 
 ### Current worktree rule
 

@@ -991,6 +991,200 @@
   line-height: 1.45;
 }
 
+.regional-case {
+  margin-bottom: 26px;
+  padding: 26px;
+  display: flex;
+  gap: 28px;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid var(--line);
+  background: var(--paper);
+}
+
+.regional-case h2,
+.regional-case p,
+.regional-case strong {
+  margin: 0;
+}
+
+.regional-case strong {
+  max-width: 520px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(1.25rem, 2vw, 1.7rem);
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.regional-route {
+  margin-bottom: 26px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 18px;
+  align-items: stretch;
+}
+
+.regional-route article {
+  min-height: 190px;
+  padding: 24px;
+  border: 1px solid var(--line);
+  background: var(--white);
+}
+
+.regional-route article > span {
+  display: block;
+  margin-bottom: 22px;
+  color: var(--coral);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.regional-route article h2 {
+  margin: 14px 0 8px;
+  font-size: 1.35rem;
+}
+
+.regional-route article p {
+  margin: 0;
+  color: var(--ink-soft);
+  line-height: 1.55;
+}
+
+.regional-route-arrow {
+  min-width: 110px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  color: var(--blue-deep);
+  text-align: center;
+}
+
+.regional-route-arrow small {
+  max-width: 90px;
+  margin-top: 8px;
+  font-weight: 750;
+  line-height: 1.25;
+}
+
+.regional-source-grid {
+  margin-bottom: 26px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.regional-source {
+  min-height: 150px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  background: var(--white);
+}
+
+.regional-source.complete {
+  border-color: color-mix(in srgb, var(--success) 45%, var(--line));
+}
+
+.regional-source > div {
+  margin-bottom: 14px;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.regional-source small,
+.regional-source strong,
+.regional-source code {
+  font-size: 0.72rem;
+}
+
+.regional-source strong {
+  color: var(--success);
+}
+
+.regional-source code {
+  overflow-wrap: anywhere;
+  color: var(--blue-deep);
+}
+
+.regional-source p {
+  margin: 12px 0 0;
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.scale-map {
+  margin: 22px 0 28px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.scale-map article {
+  min-height: 210px;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  background: var(--white);
+}
+
+.scale-map article > span {
+  margin-bottom: auto;
+  color: var(--coral);
+  font-size: 0.68rem;
+  font-weight: 850;
+}
+
+.scale-map svg {
+  margin: 34px 0 12px;
+  color: var(--blue-deep);
+}
+
+.scale-map h2,
+.scale-map p {
+  margin: 0;
+}
+
+.scale-map h2 {
+  font-size: 1.25rem;
+}
+
+.scale-map p {
+  margin-top: 6px;
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+}
+
+.scale-invariant {
+  margin-bottom: 26px;
+  padding: 24px;
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+  border: 1px solid var(--blue-deep);
+  background: color-mix(in srgb, var(--blue-deep) 5%, var(--white));
+}
+
+.scale-invariant svg {
+  flex: 0 0 auto;
+  color: var(--blue-deep);
+}
+
+.scale-invariant h2 {
+  margin: 0 0 8px;
+  font-size: 1.3rem;
+}
+
+.scale-invariant p {
+  margin: 0;
+  color: var(--ink-soft);
+  line-height: 1.6;
+}
+
 @media (max-width: 1050px) {
   .journey-layout {
     grid-template-columns: 1fr;
@@ -1006,6 +1200,10 @@
 
   .journey-sidebar {
     position: static;
+  }
+
+  .scale-map {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -1045,6 +1243,22 @@
 
   .federated-check-layout {
     grid-template-columns: 1fr;
+  }
+
+  .regional-case {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .regional-route,
+  .regional-source-grid,
+  .scale-map {
+    grid-template-columns: 1fr;
+  }
+
+  .regional-route-arrow {
+    min-height: 80px;
+    transform: rotate(90deg);
   }
 
   .federated-check-layout .selected-patient-summary {

@@ -1,13 +1,17 @@
 # Product brief: European oncology collaboration foundation
 
 **Status:** Approved
-**Version:** 0.3
+**Version:** 0.4
 **Date:** 2026-09-24
 **Approval required before:** Architecture
 
 ## Decision requested
 
-Build a five-minute, presenter-led demonstration of a closed-loop referral from Milan to Utrecht. The platform should assemble a trustworthy referral with little manual data chasing by calling hospital-owned APIs, preserving source ownership and provenance, and requiring clinicians to approve what crosses each institutional boundary.
+Build a presenter-led demonstration that first solves one relatable exchange
+between two nearby Utrecht hospitals, then shows the same federated pattern
+scaling through the Netherlands, Germany, Italy, and a European care and
+research network. The existing closed-loop Milan-to-Utrecht referral remains
+the detailed international proof.
 
 ## Problem
 
@@ -28,7 +32,12 @@ The product does not impersonate Professor Koopman or imply her endorsement.
 
 ## Desired outcome
 
-The audience should conclude:
+The audience should first conclude:
+
+> If two hospitals around the corner can exchange evidence without centralizing
+> their records, the same architecture can support wider networks.
+
+They should then conclude:
 
 > Cross-border specialist referrals can become faster and more trustworthy without centralizing every hospital record.
 
@@ -42,6 +51,26 @@ The demonstration succeeds when the audience can see that:
 - the process closes with a specialist opinion, MDO acceptance, and a returned next action in Milan.
 
 ## Product concept
+
+### Phase 1: nearby Utrecht hospitals
+
+The demonstration opens with a synthetic Utrecht regional case: one nearby
+hospital needs missing imaging held by another Utrecht hospital before an
+oncology review can continue. The presenter triggers visible calls to the
+source hospital's patient-summary and imaging systems, reviews what is
+available, and explicitly approves a small source-linked exchange.
+
+The phase is intentionally short. It establishes the recurring pattern:
+hospital-owned source, authorized API request, visible provenance, clinician
+approval, and a named next responsibility.
+
+### Scale reveal
+
+After the local exchange succeeds, the interface zooms out through Utrecht,
+the Netherlands, Germany and Italy, and Europe. The message is that geography
+changes while the exchange pattern and trust rules remain the same.
+
+### Phase 2: international closed-loop referral
 
 The demonstration starts with a role picker. The presenter enters Dr Luca Bianchi's Milan workspace, sees three synthetic active patients, and selects the patient whose care plan calls for external expertise.
 
@@ -121,6 +150,20 @@ Use six plain-language stages. Completed and current stages may be revisited; fu
 
 Provide a deterministic, presenter-controlled path that can be rehearsed and completed without relying on unpredictable live AI behavior. Any live AI capability must be clearly labeled and may not silently replace the rehearsal path.
 
+### REQ-017: Local-first proof
+
+Open with a short interactive exchange between two nearby synthetic Utrecht
+hospitals. The local problem must be understandable without oncology-network or
+European-policy context and must visibly use the same federated request,
+provenance, approval, and responsibility pattern as the international journey.
+
+### REQ-018: Scale reveal
+
+After the local exchange succeeds, show a clear Utrecht → Netherlands →
+Germany/Italy → Europe progression before entering the Milan-to-Utrecht
+referral. The transition must state that source ownership and clinician
+responsibility do not change with geography.
+
 ## Scope
 
 ### Must have
@@ -138,6 +181,7 @@ Provide a deterministic, presenter-controlled path that can be rehearsed and com
 - Closed-loop MDO acceptance and returned next responsibility.
 - A persistent cross-institution activity timeline.
 - Presenter-led narrative.
+- A short Utrecht-to-Utrecht opening and visible scale transition.
 - Explicit demonstration and synthetic-data boundaries.
 
 ### Should have
@@ -180,6 +224,8 @@ Provide a deterministic, presenter-controlled path that can be rehearsed and com
 - Failure or unavailable evidence remains visible rather than producing a false success.
 - The UI supports the story without generic dashboard clutter.
 - The full narrative can be presented in about five minutes.
+- The audience can retell the sequence as local proof followed by international
+  scale.
 
 ## Assumptions
 
@@ -216,7 +262,9 @@ Provide a deterministic, presenter-controlled path that can be rehearsed and com
 ## Approval record
 
 **Status:** Approved
-**Approved scope:** Product brief version 0.3, including role-based Milan and Utrecht workspaces, a three-patient Milan worklist, visible federated API calls, hybrid referral sharing, separate referral and specialist opinions, a Utrecht evidence request, an approved immutable update, MDO acceptance, and a closed-loop return to Milan.
+**Approved scope:** Product brief version 0.4, adding a short interactive
+Utrecht-to-Utrecht exchange and Utrecht → Netherlands → Germany/Italy → Europe
+scale reveal before the existing role-based Milan-to-Utrecht closed loop.
 **Rejected alternatives:** A cumulative single-page interface; technical review-condition checkboxes; an unexplained status-only journey rail; centralizing all source records; a research workflow in the main story; slogan-like or generic AI copy.
 **Approver:** User
 **Approval date:** 2026-09-24

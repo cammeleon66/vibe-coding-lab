@@ -32,6 +32,24 @@ class JourneyRole(StrEnum):
     UTRECHT = "utrecht"
 
 
+class JourneyPhase(StrEnum):
+    REGIONAL_EXCHANGE = "regional_exchange"
+    SCALE_REVEAL = "scale_reveal"
+    INTERNATIONAL_REFERRAL = "international_referral"
+
+
+class RegionalExchangeStage(StrEnum):
+    PROBLEM = "problem"
+    SOURCE_CHECK = "source_check"
+    SHARING_APPROVAL = "sharing_approval"
+    COMPLETE = "complete"
+
+
+class RegionalSourceId(StrEnum):
+    UTRECHT_PATIENT_SUMMARY = "utrecht_patient_summary"
+    UTRECHT_IMAGING = "utrecht_imaging"
+
+
 class JourneyStageId(StrEnum):
     PATIENT = "patient"
     LOCAL_DATA = "local_data"
@@ -63,6 +81,33 @@ class SourceCheckResult(BaseModel):
     records: list[SourceRecordView]
     checked_at: datetime
     error: str | None = None
+
+
+class RegionalSourceCheckView(BaseModel):
+    source_id: RegionalSourceId
+    source_label: str
+    endpoint: str
+    owner_institution: str
+    requesting_institution: str
+    status: Literal["complete"]
+    records: list[SourceRecordView]
+    checked_at: datetime
+
+
+class RegionalExchangeView(BaseModel):
+    phase: JourneyPhase = JourneyPhase.REGIONAL_EXCHANGE
+    stage: RegionalExchangeStage = RegionalExchangeStage.PROBLEM
+    patient_label: str = "Sanne de Vries"
+    case_id: str = "CRC-NL-042"
+    requesting_institution: str = "Utrecht Regional Oncology Centre"
+    source_institution: str = "Stadshaven Hospital Utrecht"
+    problem: str = (
+        "The regional oncology team needs the latest liver MRI before today's treatment review."
+    )
+    source_checks: dict[RegionalSourceId, RegionalSourceCheckView] = Field(default_factory=dict)
+    sharing_approved: bool = False
+    approved_by: str | None = None
+    next_responsibility: str | None = None
 
 
 class JourneyMatchReasonView(BaseModel):
@@ -151,6 +196,11 @@ class JourneyActivity(BaseModel):
         "evidence_update_approved",
         "final_opinion_recorded",
         "mdo_accepted",
+        "regional_source_queried",
+        "regional_sharing_approved",
+        "regional_exchange_completed",
+        "scale_reveal_opened",
+        "international_referral_opened",
     ]
     actor: str
     institution: str
@@ -160,6 +210,7 @@ class JourneyActivity(BaseModel):
 
 
 class ReferralJourneyState(BaseModel):
+    regional_exchange: RegionalExchangeView = Field(default_factory=RegionalExchangeView)
     active_role: JourneyRole | None = None
     selected_patient_id: str | None = None
     current_stage: JourneyStageId = JourneyStageId.PATIENT
@@ -210,6 +261,7 @@ class JourneyStageView(BaseModel):
 
 
 class ReferralJourneySnapshot(BaseModel):
+    regional_exchange: RegionalExchangeView
     active_role: JourneyRole | None
     selected_patient_id: str | None
     roles: list[JourneyRoleView]
@@ -236,6 +288,23 @@ class ReferralJourneySnapshot(BaseModel):
 class EnterRoleAction(BaseModel):
     type: Literal["enter_role"] = "enter_role"
     role: JourneyRole
+
+
+class QueryRegionalSourceAction(BaseModel):
+    type: Literal["query_regional_source"] = "query_regional_source"
+    source_id: RegionalSourceId
+
+
+class ApproveRegionalExchangeAction(BaseModel):
+    type: Literal["approve_regional_exchange"] = "approve_regional_exchange"
+
+
+class OpenScaleRevealAction(BaseModel):
+    type: Literal["open_scale_reveal"] = "open_scale_reveal"
+
+
+class OpenInternationalReferralAction(BaseModel):
+    type: Literal["open_international_referral"] = "open_international_referral"
 
 
 class SelectPatientAction(BaseModel):
@@ -315,7 +384,11 @@ class AcceptMdoOutcomeAction(BaseModel):
 
 
 ReferralJourneyAction = Annotated[
-    EnterRoleAction
+    QueryRegionalSourceAction
+    | ApproveRegionalExchangeAction
+    | OpenScaleRevealAction
+    | OpenInternationalReferralAction
+    | EnterRoleAction
     | SelectPatientAction
     | QuerySourceAction
     | ConfirmReferralQuestionAction

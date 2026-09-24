@@ -1,34 +1,41 @@
-# European oncology referral demonstration
+# European oncology collaboration demonstration
 
-A synthetic five-minute demonstration of a closed-loop oncology referral from
-Milan to Utrecht. It shows how hospital-owned systems can remain decentralized
-while clinicians prepare, approve, review, update, and close a source-linked
-cross-border referral.
+A synthetic five-minute demonstration that solves a nearby Utrecht hospital
+exchange first, then applies the same federated pattern to a closed-loop
+oncology referral from Milan to Utrecht. It shows how hospital-owned systems
+can remain decentralized while clinicians approve what crosses institutional
+boundaries and retain clear responsibility.
 
 **Demonstration system. Not for clinical use. No real patient data, clinician
 directory, credential verification, or hospital integration.**
 
 ## Demonstrated journey
 
-1. Dr Luca Bianchi opens a Milan patient worklist and selects the one patient
+1. Two synthetic Utrecht hospitals resolve a missing-imaging problem through
+   visible patient-summary and imaging-system requests.
+2. A clinician approves the regional exchange; source files remain at the
+   hospital that owns them and the next responsibility is explicit.
+3. The interface zooms out through Utrecht, the Netherlands, Germany and Italy,
+   and Europe while preserving the same trust rules.
+4. Dr Luca Bianchi opens a Milan patient worklist and selects the one patient
    who needs external specialist review.
-2. The application calls the Milan EHR, document repository, and imaging
+5. The application calls the Milan EHR, document repository, and imaging
    archive separately and keeps missing evidence visible.
-3. Dr Bianchi confirms the clinical question, queries a bounded synthetic expert
+6. Dr Bianchi confirms the clinical question, queries a bounded synthetic expert
    directory, selects UMC Utrecht, and checks Utrecht's referral requirements.
-4. The application prepares immutable case version 1 with source provenance.
+7. The application prepares immutable case version 1 with source provenance.
    Structured context can cross after approval; original documents, images, and
    the Milan record remain in Milan.
-5. Dr Bianchi records his referral assessment and explicitly approves sharing.
-6. Dr Eva van Dijk acknowledges version 1, records a separate provisional
+8. Dr Bianchi records his referral assessment and explicitly approves sharing.
+9. Dr Eva van Dijk acknowledges version 1, records a separate provisional
    specialist opinion, and requests the missing baseline CT and liver MRI with a
    clinical reason.
-7. The evidence-arrival path creates immutable case version 2 and a visible
+10. The evidence-arrival path creates immutable case version 2 and a visible
    version delta. Dr Bianchi approves the update before Utrecht can acknowledge
    it.
-8. Dr van Dijk records the final specialist opinion and accepts version 2 into
+11. Dr van Dijk records the final specialist opinion and accepts version 2 into
    the Utrecht MDO.
-9. Milan receives the opinion, meeting schedule, and Dr Bianchi's next
+12. Milan receives the opinion, meeting schedule, and Dr Bianchi's next
    responsibility. A persistent timeline records source queries, approvals,
    acknowledgements, and responsibility changes.
 
@@ -79,10 +86,10 @@ npm --prefix frontend run build
 npm --prefix frontend run test:browser
 ```
 
-Current local baseline: 57 backend tests, strict mypy, Ruff, five Vitest tests,
-frontend lint/build, and four desktop/mobile Playwright checks. Automated axe
-scans report no serious or critical WCAG A/AA findings in the tested role and
-patient screens.
+Current local baseline: 58 backend tests, strict mypy, Ruff, six Vitest tests,
+frontend lint/build, and six desktop/mobile Playwright checks. Automated axe
+scans report no serious or critical WCAG A/AA findings in the tested regional,
+scale, role, and patient screens.
 
 ## Limits
 

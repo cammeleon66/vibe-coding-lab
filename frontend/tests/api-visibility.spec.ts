@@ -13,6 +13,11 @@ test.beforeEach(async ({ page }) => {
 
 test('keeps federated API activity visible after source checks complete', async ({ page }) => {
   await page.goto('/')
+  await page.getByRole('button', { name: 'Check patient summary' }).click()
+  await page.getByRole('button', { name: 'Check source imaging' }).click()
+  await page.getByRole('button', { name: 'Approve regional sharing' }).click()
+  await page.getByRole('button', { name: 'See how the same pattern scales' }).click()
+  await page.getByRole('button', { name: 'Open Milan-to-Utrecht referral' }).click()
   await page.getByRole('button', { name: 'Open Milan workspace' }).click()
   await page.getByRole('button', { name: 'Prepare specialist referral' }).click()
   await expect(page.getByText('Local data check complete')).toBeVisible()

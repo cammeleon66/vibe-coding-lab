@@ -1,6 +1,8 @@
-# Cross-border Oncology Referral
+# Federated Oncology Collaboration
 
-This context covers a synthetic referral shared between a Milan oncology team and a Utrecht specialist team. It defines the clinical and collaboration terms used throughout the demonstration.
+This context covers synthetic regional and cross-border collaboration between
+hospital-owned oncology workspaces. It defines the clinical and collaboration
+terms used throughout the demonstration.
 
 ## People and workspaces
 
@@ -15,6 +17,18 @@ _Avoid_: Reviewer, recipient
 **Institutional workspace**:
 The hospital-owned view in which a clinician sees local patients, permitted evidence, incoming referrals, and assigned actions.
 _Avoid_: Dashboard, portal
+
+**Regional exchange**:
+An approved exchange between separate nearby hospitals in the same care region.
+It uses the same source ownership, provenance, and clinician-approval rules as
+cross-border collaboration.
+_Avoid_: Internal transfer, shared database
+
+**Collaboration scale**:
+The geographic scope across which the same exchange pattern operates: nearby
+hospitals, a national network, or an international network. Scale does not
+change source ownership or clinician responsibility.
+_Avoid_: Product tier, deployment size
 
 ## Referral and evidence
 

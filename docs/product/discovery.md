@@ -102,22 +102,43 @@ The demonstration should prove that useful cross-border collaboration does not r
 **Date:** 2026-09-24
 **Implications:** The main journey starts from a Milan patient worklist, shows federated API calls, requires explicit sharing approvals, switches to the Utrecht receiving role, handles a requested evidence update, ends with MDO acceptance and a returned specialist opinion, and removes research from the primary path.
 
+### DEC-011: Local proof before European scale
+
+**Decision:** Open with a short interactive exchange between two nearby
+synthetic Utrecht hospitals, then zoom out through the Netherlands, Germany,
+Italy, and Europe before entering the existing Milan-to-Utrecht referral.
+**Source:** Stakeholder feedback relayed by the user.
+**Date:** 2026-09-24
+**Implications:** The regional opening uses the same federated requests, source
+ownership, provenance, clinician approval, and next-responsibility language as
+the international journey. It proves the reusable pattern without becoming a
+second full referral.
+
 ## JOURNEY-001: Approved clinical journey
 
-1. The presenter chooses a synthetic clinical role and enters Dr Luca Bianchi's Milan workspace.
-2. Dr Bianchi selects the referral candidate from three synthetic active patients.
-3. The platform calls the Milan EHR, document repository, and PACS and shows the result of each request.
-4. Dr Bianchi confirms the clinical question.
-5. The platform calls the European expert directory and Utrecht referral-requirements service.
-6. Dr Bianchi selects Utrecht and Dr Eva van Dijk.
-7. The platform prepares case version 1 and distinguishes information in the referral package from source evidence that stays in Milan.
-8. Dr Bianchi records the referral assessment, approves the package, and sends it.
-9. The presenter follows a guided role handoff to Dr van Dijk's Utrecht inbox.
-10. Dr van Dijk acknowledges case version 1, records a provisional specialist opinion, and requests missing imaging.
-11. New imaging becomes available in Milan and the platform prepares case version 2.
-12. Dr Bianchi approves the update; Dr van Dijk acknowledges the new version.
-13. Dr van Dijk finalizes the specialist opinion and accepts case version 2 into the MDO.
-14. Milan receives the opinion, MDO state, and next responsibility.
+1. The presenter solves a missing-imaging exchange between two nearby synthetic
+   Utrecht hospitals and approves the small source-linked exchange.
+2. The interface zooms out through Utrecht, the Netherlands, Germany and Italy,
+   and Europe, then opens the existing international referral.
+3. The presenter chooses a synthetic clinical role and enters Dr Luca Bianchi's Milan workspace.
+4. Dr Bianchi selects the referral candidate from three synthetic active patients.
+5. The platform calls the Milan EHR, document repository, and PACS and shows the result of each request.
+6. Dr Bianchi confirms the clinical question.
+7. The platform calls the European expert directory and Utrecht referral-requirements service.
+8. Dr Bianchi selects Utrecht and Dr Eva van Dijk.
+9. The platform prepares case version 1 and distinguishes information in the referral package from source evidence that stays in Milan.
+10. Dr Bianchi records the referral assessment, approves the package, and sends it.
+11. The presenter follows a guided role handoff to Dr van Dijk's Utrecht inbox.
+12. Dr van Dijk acknowledges case version 1, records a provisional specialist opinion, and requests missing imaging.
+13. New imaging becomes available in Milan and the platform prepares case version 2.
+14. Dr Bianchi approves the update; Dr van Dijk acknowledges the new version.
+15. Dr van Dijk finalizes the specialist opinion and accepts case version 2 into the MDO.
+16. Milan receives the opinion, MDO state, and next responsibility.
+
+The first two steps are the local proof and scale reveal. Steps 3–16 are the
+existing closed-loop international referral.
+
+<!-- Superseded sequence retained in git history. -->
 
 A persistent activity timeline shows API calls, approvals, transfers, acknowledgements, evidence requests, and clinical decisions. The primary path contains no research workflow.
 

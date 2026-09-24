@@ -71,6 +71,21 @@ const patients = [
 ]
 
 const initialSnapshot = {
+  regional_exchange: {
+    phase: 'international_referral',
+    stage: 'complete',
+    patient_label: 'Sanne de Vries',
+    case_id: 'CRC-NL-042',
+    requesting_institution: 'Utrecht Regional Oncology Centre',
+    source_institution: 'Stadshaven Hospital Utrecht',
+    problem:
+      "The regional oncology team needs the latest liver MRI before today's treatment review.",
+    source_checks: {},
+    sharing_approved: true,
+    approved_by: 'Dr Noor Jansen',
+    next_responsibility:
+      "Utrecht Regional Oncology Centre reviews the source-linked MRI before today's treatment meeting.",
+  },
   active_role: null,
   selected_patient_id: null,
   roles,
@@ -245,6 +260,120 @@ afterEach(() => {
 })
 
 describe('referral journey foundation', () => {
+  it('opens with a nearby Utrecht hospital problem and advances to the scale reveal', async () => {
+    const regionalSnapshot = {
+      ...initialSnapshot,
+      regional_exchange: {
+        ...initialSnapshot.regional_exchange,
+        phase: 'regional_exchange',
+        stage: 'problem',
+        source_checks: {},
+        sharing_approved: false,
+        approved_by: null,
+        next_responsibility: null,
+      },
+    }
+    const summaryCheck = {
+      source_id: 'utrecht_patient_summary',
+      source_label: 'Stadshaven patient-summary service',
+      endpoint: 'GET /fhir/Patient/CRC-NL-042/$summary',
+      owner_institution: 'Stadshaven Hospital Utrecht',
+      requesting_institution: 'Utrecht Regional Oncology Centre',
+      status: 'complete',
+      records: [
+        {
+          id: 'diagnosis-summary',
+          label: 'Oncology diagnosis summary',
+          status: 'available',
+          detail: 'Structured diagnosis is available.',
+        },
+      ],
+      checked_at: '2026-09-24T08:00:00Z',
+    }
+    const imagingCheck = {
+      ...summaryCheck,
+      source_id: 'utrecht_imaging',
+      source_label: 'Stadshaven imaging archive',
+      endpoint: 'GET /dicom/studies?patient=CRC-NL-042&modality=MR',
+    }
+    const fetchMock = vi.fn((url: string, options?: RequestInit) => {
+      if (url === '/api/journey') return response(regionalSnapshot)
+      const body = JSON.parse(String(options?.body))
+      if (body.type === 'query_regional_source') {
+        const sourceChecks =
+          body.source_id === 'utrecht_patient_summary'
+            ? { utrecht_patient_summary: summaryCheck }
+            : {
+                utrecht_patient_summary: summaryCheck,
+                utrecht_imaging: imagingCheck,
+              }
+        return response({
+          ...regionalSnapshot,
+          regional_exchange: {
+            ...regionalSnapshot.regional_exchange,
+            stage:
+              body.source_id === 'utrecht_patient_summary'
+                ? 'source_check'
+                : 'sharing_approval',
+            source_checks: sourceChecks,
+          },
+        })
+      }
+      if (body.type === 'approve_regional_exchange') {
+        return response({
+          ...regionalSnapshot,
+          regional_exchange: {
+            ...regionalSnapshot.regional_exchange,
+            stage: 'complete',
+            source_checks: {
+              utrecht_patient_summary: summaryCheck,
+              utrecht_imaging: imagingCheck,
+            },
+            sharing_approved: true,
+            approved_by: 'Dr Noor Jansen',
+            next_responsibility:
+              "Utrecht Regional Oncology Centre reviews the source-linked MRI before today's treatment meeting.",
+          },
+        })
+      }
+      if (body.type === 'open_scale_reveal') {
+        return response({
+          ...regionalSnapshot,
+          regional_exchange: {
+            ...regionalSnapshot.regional_exchange,
+            phase: 'scale_reveal',
+            stage: 'complete',
+            sharing_approved: true,
+          },
+        })
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+
+    render(<App />)
+
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Two Utrecht hospitals need one clear answer',
+      }),
+    ).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /check patient summary/i }))
+    await user.click(await screen.findByRole('button', { name: /check source imaging/i }))
+    await user.click(await screen.findByRole('button', { name: /approve regional sharing/i }))
+    await user.click(
+      await screen.findByRole('button', { name: /see how the same pattern scales/i }),
+    )
+
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Geography changes. The trust rules do not.',
+      }),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Germany + Italy')).toBeInTheDocument()
+  })
+
   it('starts with explicit Milan and Utrecht clinical roles', async () => {
     vi.stubGlobal('fetch', vi.fn(() => response(initialSnapshot)))
 

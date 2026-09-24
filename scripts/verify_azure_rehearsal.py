@@ -73,6 +73,20 @@ def verify(base_url: str, access_code: str | None = None) -> None:
     def action(payload: dict[str, object]) -> Any:
         return call("/api/journey/actions", method="POST", payload=payload)
 
+    for source_id in ("utrecht_patient_summary", "utrecht_imaging"):
+        regional = action({"type": "query_regional_source", "source_id": source_id})
+    if len(regional["regional_exchange"]["source_checks"]) != 2:
+        raise RuntimeError("The regional hospital source checks did not complete.")
+    regional = action({"type": "approve_regional_exchange"})
+    if not regional["regional_exchange"]["sharing_approved"]:
+        raise RuntimeError("The regional sharing approval was not persisted.")
+    scale = action({"type": "open_scale_reveal"})
+    if scale["regional_exchange"]["phase"] != "scale_reveal":
+        raise RuntimeError("The European scale reveal did not open.")
+    international = action({"type": "open_international_referral"})
+    if international["regional_exchange"]["phase"] != "international_referral":
+        raise RuntimeError("The international referral did not open after the scale reveal.")
+
     action({"type": "enter_role", "role": "milan"})
     action({"type": "select_patient", "patient_id": "CRC-EU-001"})
     for source_id in ("milan_ehr", "milan_documents", "milan_pacs"):
@@ -189,12 +203,16 @@ def verify(base_url: str, access_code: str | None = None) -> None:
     restored = call("/api/journey")
     if returned["mdo_outcome"] != restored["mdo_outcome"]:
         raise RuntimeError("The returned MDO outcome did not survive journey refresh.")
-    if len(restored["activity"]) < 20:
+    if len(restored["activity"]) < 26:
         raise RuntimeError("The persisted cross-hospital activity timeline is incomplete.")
 
     call("/api/reset", method="POST")
     clean = call("/api/journey")
-    if clean["active_role"] is not None or clean["activity"]:
+    if (
+        clean["active_role"] is not None
+        or clean["activity"]
+        or clean["regional_exchange"]["phase"] != "regional_exchange"
+    ):
         raise RuntimeError("Azure rehearsal reset did not restore a clean state.")
 
     print(
@@ -203,7 +221,8 @@ def verify(base_url: str, access_code: str | None = None) -> None:
                 "status": "pass",
                 "mode": preflight["mode"],
                 "protected_access": "pass",
-                "federated_sources": 3,
+                "regional_sources": 2,
+                "international_sources": 3,
                 "prepared_versions": [1, 2],
                 "event_grid_event": arrival["event_id"],
                 "mdo_case_version": accepted["mdo_outcome"]["case_version"],

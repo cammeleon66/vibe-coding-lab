@@ -12,6 +12,7 @@ from collab.models import (
     AcknowledgeCaseVersionAction,
     ApproveEvidenceUpdateAction,
     ApproveReferralPackageAction,
+    ApproveRegionalExchangeAction,
     ClinicalNeed,
     ConfirmReferralQuestionAction,
     DemoState,
@@ -24,14 +25,18 @@ from collab.models import (
     JourneyDestinationView,
     JourneyMatchReasonView,
     JourneyPatientView,
+    JourneyPhase,
     JourneyRequirementView,
     JourneyRole,
     JourneyRoleView,
     JourneyStageId,
     JourneyStageView,
     MdoOutcomeView,
+    OpenInternationalReferralAction,
+    OpenScaleRevealAction,
     PrepareReferralPackageAction,
     QueryExpertDirectoryAction,
+    QueryRegionalSourceAction,
     QueryRequirementsAction,
     QuerySourceAction,
     ReceiveEvidenceUpdateAction,
@@ -42,11 +47,15 @@ from collab.models import (
     ReferralJourneySnapshot,
     ReferralPackageView,
     ReferralSender,
+    RegionalExchangeStage,
+    RegionalSourceCheckView,
+    RegionalSourceId,
     RequestEvidenceAction,
     RequirementStatus,
     SelectDestinationAction,
     SelectPatientAction,
     SourceCheckResult,
+    SourceRecordView,
     Urgency,
     utc_now,
 )
@@ -82,7 +91,15 @@ class ReferralJourney:
     def apply(self, action: ReferralJourneyAction) -> ReferralJourneySnapshot:
         with self._store.locked():
             state = self._store.load()
-            if isinstance(action, EnterRoleAction):
+            if isinstance(action, QueryRegionalSourceAction):
+                next_state = self._query_regional_source(state, action)
+            elif isinstance(action, ApproveRegionalExchangeAction):
+                next_state = self._approve_regional_exchange(state)
+            elif isinstance(action, OpenScaleRevealAction):
+                next_state = self._open_scale_reveal(state)
+            elif isinstance(action, OpenInternationalReferralAction):
+                next_state = self._open_international_referral(state)
+            elif isinstance(action, EnterRoleAction):
                 next_state = self._enter_role(state, action)
             elif isinstance(action, SelectPatientAction):
                 next_state = self._select_patient(state, action)
@@ -119,7 +136,203 @@ class ReferralJourney:
             self._store.save(next_state)
             return self._snapshot(next_state)
 
+    def _query_regional_source(
+        self,
+        state: DemoState,
+        action: QueryRegionalSourceAction,
+    ) -> DemoState:
+        exchange = state.referral_journey.regional_exchange
+        if exchange.phase != JourneyPhase.REGIONAL_EXCHANGE:
+            raise ReferralJourneyError("The regional exchange is already complete.")
+        if action.source_id in exchange.source_checks:
+            return state
+        if action.source_id == RegionalSourceId.UTRECHT_PATIENT_SUMMARY:
+            source_label = "Stadshaven patient-summary service"
+            endpoint = "GET /fhir/Patient/CRC-NL-042/$summary"
+            records = [
+                SourceRecordView(
+                    id="diagnosis-summary",
+                    label="Oncology diagnosis summary",
+                    status="available",
+                    detail="Structured colorectal cancer diagnosis and current treatment.",
+                ),
+                SourceRecordView(
+                    id="consent-directive",
+                    label="Regional sharing directive",
+                    status="available",
+                    detail="Permits clinician-approved regional care exchange.",
+                ),
+            ]
+        else:
+            source_label = "Stadshaven imaging archive"
+            endpoint = "GET /dicom/studies?patient=CRC-NL-042&modality=MR"
+            records = [
+                SourceRecordView(
+                    id="liver-mri-report",
+                    label="Latest liver MRI report",
+                    status="available",
+                    detail="Report dated 24 September 2026 is available at the source.",
+                ),
+                SourceRecordView(
+                    id="liver-mri-images",
+                    label="Latest liver MRI images",
+                    status="available",
+                    detail="Images remain in the Stadshaven imaging archive.",
+                ),
+            ]
+        check = RegionalSourceCheckView(
+            source_id=action.source_id,
+            source_label=source_label,
+            endpoint=endpoint,
+            owner_institution=exchange.source_institution,
+            requesting_institution=exchange.requesting_institution,
+            status="complete",
+            records=records,
+            checked_at=utc_now(),
+        )
+        checks = {**exchange.source_checks, action.source_id: check}
+        stage = (
+            RegionalExchangeStage.SHARING_APPROVAL
+            if all(source_id in checks for source_id in RegionalSourceId)
+            else RegionalExchangeStage.SOURCE_CHECK
+        )
+        journey = state.referral_journey.model_copy(
+            update={
+                "regional_exchange": exchange.model_copy(
+                    update={"source_checks": checks, "stage": stage}
+                ),
+                "activity": [
+                    *state.referral_journey.activity,
+                    JourneyActivity(
+                        id=f"ACT-{uuid4().hex[:10].upper()}",
+                        kind="regional_source_queried",
+                        actor="Regional oncology exchange agent",
+                        institution=exchange.requesting_institution,
+                        title=f"Queried {source_label}",
+                        detail=(
+                            f"{len(records)} source-linked records found at "
+                            f"{exchange.source_institution}; source files remain hospital-owned."
+                        ),
+                        occurred_at=utc_now(),
+                    ),
+                ],
+            }
+        )
+        return state.model_copy(update={"referral_journey": journey})
+
+    def _approve_regional_exchange(self, state: DemoState) -> DemoState:
+        exchange = state.referral_journey.regional_exchange
+        if exchange.phase != JourneyPhase.REGIONAL_EXCHANGE:
+            raise ReferralJourneyError("The regional exchange is already complete.")
+        if exchange.stage != RegionalExchangeStage.SHARING_APPROVAL:
+            raise ReferralJourneyError("Check both hospital sources before approving sharing.")
+        if exchange.sharing_approved:
+            return state
+        approved = exchange.model_copy(
+            update={
+                "stage": RegionalExchangeStage.COMPLETE,
+                "sharing_approved": True,
+                "approved_by": "Dr Noor Jansen",
+                "next_responsibility": (
+                    "Utrecht Regional Oncology Centre reviews the source-linked MRI "
+                    "before today's treatment meeting."
+                ),
+            }
+        )
+        events = [
+            JourneyActivity(
+                id=f"ACT-{uuid4().hex[:10].upper()}",
+                kind="regional_sharing_approved",
+                actor="Dr Noor Jansen",
+                institution=exchange.source_institution,
+                title="Approved the regional sharing request",
+                detail=(
+                    "The diagnosis summary and MRI report may cross the institutional "
+                    "boundary; the original images remain at the source hospital."
+                ),
+                occurred_at=utc_now(),
+            ),
+            JourneyActivity(
+                id=f"ACT-{uuid4().hex[:10].upper()}",
+                kind="regional_exchange_completed",
+                actor="Regional oncology exchange agent",
+                institution=exchange.requesting_institution,
+                title="Completed the nearby-hospital exchange",
+                detail=approved.next_responsibility or "",
+                occurred_at=utc_now(),
+            ),
+        ]
+        journey = state.referral_journey.model_copy(
+            update={
+                "regional_exchange": approved,
+                "activity": [*state.referral_journey.activity, *events],
+            }
+        )
+        return state.model_copy(update={"referral_journey": journey})
+
+    def _open_scale_reveal(self, state: DemoState) -> DemoState:
+        exchange = state.referral_journey.regional_exchange
+        if exchange.stage != RegionalExchangeStage.COMPLETE:
+            raise ReferralJourneyError("Complete the regional exchange before scaling out.")
+        if exchange.phase == JourneyPhase.SCALE_REVEAL:
+            return state
+        if exchange.phase == JourneyPhase.INTERNATIONAL_REFERRAL:
+            raise ReferralJourneyError("The international referral is already open.")
+        updated = exchange.model_copy(update={"phase": JourneyPhase.SCALE_REVEAL})
+        journey = state.referral_journey.model_copy(
+            update={
+                "regional_exchange": updated,
+                "activity": [
+                    *state.referral_journey.activity,
+                    JourneyActivity(
+                        id=f"ACT-{uuid4().hex[:10].upper()}",
+                        kind="scale_reveal_opened",
+                        actor="European Oncology Exchange",
+                        institution="Federated care network",
+                        title="Expanded the collaboration view to Europe",
+                        detail=(
+                            "Utrecht, the Netherlands, Germany and Italy reuse the same "
+                            "source ownership, provenance and clinician-approval pattern."
+                        ),
+                        occurred_at=utc_now(),
+                    ),
+                ],
+            }
+        )
+        return state.model_copy(update={"referral_journey": journey})
+
+    def _open_international_referral(self, state: DemoState) -> DemoState:
+        exchange = state.referral_journey.regional_exchange
+        if exchange.phase != JourneyPhase.SCALE_REVEAL:
+            raise ReferralJourneyError("Open the European scale view first.")
+        updated = exchange.model_copy(update={"phase": JourneyPhase.INTERNATIONAL_REFERRAL})
+        journey = state.referral_journey.model_copy(
+            update={
+                "regional_exchange": updated,
+                "activity": [
+                    *state.referral_journey.activity,
+                    JourneyActivity(
+                        id=f"ACT-{uuid4().hex[:10].upper()}",
+                        kind="international_referral_opened",
+                        actor="European Oncology Exchange",
+                        institution="Federated care network",
+                        title="Opened the Milan-to-Utrecht referral",
+                        detail=(
+                            "The detailed international journey now applies the same "
+                            "federated pattern across borders."
+                        ),
+                        occurred_at=utc_now(),
+                    ),
+                ],
+            }
+        )
+        return state.model_copy(update={"referral_journey": journey})
+
     def _enter_role(self, state: DemoState, action: EnterRoleAction) -> DemoState:
+        if state.referral_journey.regional_exchange.phase != JourneyPhase.INTERNATIONAL_REFERRAL:
+            raise ReferralJourneyError(
+                "Complete the regional proof and European scale reveal first."
+            )
         if action.role == JourneyRole.UTRECHT and state.current_referral is None:
             raise ReferralJourneyError("Utrecht has no incoming referral yet.")
         clinician, institution = (
@@ -808,6 +1021,7 @@ class ReferralJourney:
         utrecht_available = state.current_referral is not None
         recommended_role = JourneyRole.UTRECHT if utrecht_available else JourneyRole.MILAN
         return ReferralJourneySnapshot(
+            regional_exchange=state.referral_journey.regional_exchange,
             active_role=state.referral_journey.active_role,
             selected_patient_id=state.referral_journey.selected_patient_id,
             roles=[

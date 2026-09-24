@@ -7,17 +7,65 @@ from collab.app import create_app
 from collab.federation import FederatedSourceError, local_milan_sources
 from collab.journey import ReferralJourney, ReferralJourneyError
 from collab.models import (
+    ApproveRegionalExchangeAction,
     EnterRoleAction,
     FederatedSourceId,
+    JourneyPhase,
     JourneyRole,
+    OpenInternationalReferralAction,
+    OpenScaleRevealAction,
+    QueryRegionalSourceAction,
     QuerySourceAction,
+    RegionalExchangeStage,
+    RegionalSourceId,
     SelectPatientAction,
     SourceCheckResult,
 )
 from collab.persistence import JsonStateStore
 
 
+def open_international_referral(client: TestClient) -> None:
+    for source_id in RegionalSourceId:
+        response = client.post(
+            "/api/journey/actions",
+            json={"type": "query_regional_source", "source_id": source_id.value},
+        )
+        assert response.status_code == 200
+    assert (
+        client.post(
+            "/api/journey/actions",
+            json={"type": "approve_regional_exchange"},
+        ).status_code
+        == 200
+    )
+    assert (
+        client.post(
+            "/api/journey/actions",
+            json={"type": "open_scale_reveal"},
+        ).status_code
+        == 200
+    )
+    assert (
+        client.post(
+            "/api/journey/actions",
+            json={"type": "open_international_referral"},
+        ).status_code
+        == 200
+    )
+
+
+def open_international_referral_direct(journey: ReferralJourney) -> None:
+    for source_id in RegionalSourceId:
+        journey.apply(QueryRegionalSourceAction(source_id=source_id))
+    journey.apply(ApproveRegionalExchangeAction())
+    journey.apply(OpenScaleRevealAction())
+    journey.apply(OpenInternationalReferralAction())
+
+
 def approve_case_version_one(client: TestClient) -> None:
+    snapshot = client.get("/api/journey").json()
+    if snapshot["regional_exchange"]["phase"] != "international_referral":
+        open_international_referral(client)
     client.post("/api/journey/actions", json={"type": "enter_role", "role": "milan"})
     client.post(
         "/api/journey/actions",
@@ -98,6 +146,8 @@ def test_initial_snapshot_defines_roles_patients_and_six_stages(tmp_path: Path) 
 
     snapshot = journey.snapshot()
 
+    assert snapshot.regional_exchange.phase == JourneyPhase.REGIONAL_EXCHANGE
+    assert snapshot.regional_exchange.stage == RegionalExchangeStage.PROBLEM
     assert [role.id for role in snapshot.roles] == [
         JourneyRole.MILAN,
         JourneyRole.UTRECHT,
@@ -120,12 +170,48 @@ def test_initial_snapshot_defines_roles_patients_and_six_stages(tmp_path: Path) 
     assert all(stage.status == "locked" for stage in snapshot.stages[1:])
 
 
+def test_regional_exchange_requires_source_checks_approval_and_scale_reveal(
+    tmp_path: Path,
+) -> None:
+    state_path = tmp_path / "state.json"
+    journey = ReferralJourney(JsonStateStore(state_path))
+
+    with pytest.raises(ReferralJourneyError, match="regional proof"):
+        journey.apply(EnterRoleAction(role=JourneyRole.MILAN))
+    with pytest.raises(ReferralJourneyError, match="both hospital sources"):
+        journey.apply(ApproveRegionalExchangeAction())
+
+    first = journey.apply(
+        QueryRegionalSourceAction(
+            source_id=RegionalSourceId.UTRECHT_PATIENT_SUMMARY,
+        )
+    )
+    ready = journey.apply(QueryRegionalSourceAction(source_id=RegionalSourceId.UTRECHT_IMAGING))
+    approved = journey.apply(ApproveRegionalExchangeAction())
+    scale = journey.apply(OpenScaleRevealAction())
+    international = journey.apply(OpenInternationalReferralAction())
+
+    assert first.regional_exchange.stage == RegionalExchangeStage.SOURCE_CHECK
+    assert ready.regional_exchange.stage == RegionalExchangeStage.SHARING_APPROVAL
+    assert approved.regional_exchange.sharing_approved is True
+    assert approved.regional_exchange.approved_by == "Dr Noor Jansen"
+    assert "reviews the source-linked MRI" in (approved.regional_exchange.next_responsibility or "")
+    assert scale.regional_exchange.phase == JourneyPhase.SCALE_REVEAL
+    assert international.regional_exchange.phase == JourneyPhase.INTERNATIONAL_REFERRAL
+    assert international.regional_exchange.source_checks[
+        RegionalSourceId.UTRECHT_IMAGING
+    ].endpoint.startswith("GET /dicom/")
+    restored = ReferralJourney(JsonStateStore(state_path)).snapshot()
+    assert restored.regional_exchange.phase == JourneyPhase.INTERNATIONAL_REFERRAL
+
+
 def test_patient_selection_requires_milan_and_a_referral_candidate(tmp_path: Path) -> None:
     journey = ReferralJourney(JsonStateStore(tmp_path / "state.json"))
 
     with pytest.raises(ReferralJourneyError, match="Open the Milan workspace"):
         journey.apply(SelectPatientAction(patient_id="CRC-EU-001"))
 
+    open_international_referral_direct(journey)
     journey.apply(EnterRoleAction(role=JourneyRole.MILAN))
 
     with pytest.raises(ReferralJourneyError, match="does not currently need"):
@@ -136,7 +222,7 @@ def test_patient_selection_requires_milan_and_a_referral_candidate(tmp_path: Pat
     assert selected.active_role == JourneyRole.MILAN
     assert selected.selected_patient_id == "CRC-EU-001"
     assert selected.stages[1].status == "current"
-    assert [event.kind for event in selected.activity] == [
+    assert [event.kind for event in selected.activity][-2:] == [
         "workspace_opened",
         "patient_selected",
     ]
@@ -145,6 +231,7 @@ def test_patient_selection_requires_milan_and_a_referral_candidate(tmp_path: Pat
 def test_journey_state_restores_from_the_shared_state_store(tmp_path: Path) -> None:
     state_path = tmp_path / "state.json"
     first = ReferralJourney(JsonStateStore(state_path))
+    open_international_referral_direct(first)
     first.apply(EnterRoleAction(role=JourneyRole.MILAN))
     first.apply(SelectPatientAction(patient_id="CRC-EU-001"))
 
@@ -152,7 +239,10 @@ def test_journey_state_restores_from_the_shared_state_store(tmp_path: Path) -> N
 
     assert restored.active_role == JourneyRole.MILAN
     assert restored.selected_patient_id == "CRC-EU-001"
-    assert len(restored.activity) == 2
+    assert [event.kind for event in restored.activity][-2:] == [
+        "workspace_opened",
+        "patient_selected",
+    ]
 
 
 def test_three_federated_source_queries_advance_to_referral(
@@ -163,6 +253,7 @@ def test_three_federated_source_queries_advance_to_referral(
         JsonStateStore(tmp_path / "state.json"),
         local_milan_sources(fixture_root),
     )
+    open_international_referral_direct(journey)
     journey.apply(EnterRoleAction(role=JourneyRole.MILAN))
     journey.apply(SelectPatientAction(patient_id="CRC-EU-001"))
 
@@ -202,6 +293,7 @@ def test_failed_source_query_remains_visible_and_blocks_referral(
         JsonStateStore(tmp_path / "state.json"),
         {FederatedSourceId.MILAN_EHR: FailingSource()},
     )
+    open_international_referral_direct(journey)
     journey.apply(EnterRoleAction(role=JourneyRole.MILAN))
     journey.apply(SelectPatientAction(patient_id="CRC-EU-001"))
 
@@ -230,6 +322,7 @@ def test_legacy_state_without_journey_fields_loads_with_safe_defaults(
 def test_journey_http_interface_and_reset(tmp_path: Path) -> None:
     with TestClient(create_app(tmp_path / "state.json")) as client:
         initial = client.get("/api/journey")
+        open_international_referral(client)
         entered = client.post(
             "/api/journey/actions",
             json={"type": "enter_role", "role": "milan"},
@@ -249,10 +342,12 @@ def test_journey_http_interface_and_reset(tmp_path: Path) -> None:
     assert clean.json()["active_role"] is None
     assert clean.json()["selected_patient_id"] is None
     assert clean.json()["activity"] == []
+    assert clean.json()["regional_exchange"]["phase"] == "regional_exchange"
 
 
 def test_utrecht_workspace_is_locked_until_a_referral_is_sent(tmp_path: Path) -> None:
     with TestClient(create_app(tmp_path / "state.json")) as client:
+        open_international_referral(client)
         response = client.post(
             "/api/journey/actions",
             json={"type": "enter_role", "role": "utrecht"},
@@ -267,6 +362,7 @@ def test_milan_approves_source_linked_package_before_utrecht_can_enter(
 ) -> None:
     state_path = tmp_path / "state.json"
     with TestClient(create_app(state_path)) as client:
+        open_international_referral(client)
         client.post("/api/journey/actions", json={"type": "enter_role", "role": "milan"})
         client.post(
             "/api/journey/actions",
