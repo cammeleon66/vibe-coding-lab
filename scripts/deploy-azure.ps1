@@ -47,11 +47,13 @@ $timestamp = $today.ToUniversalTime().ToString("yyyyMMddHHmmss")
 Write-Host "Deploying approved base resources to $Subscription ($($account.id))..."
 if ($ResumeAfterBase) {
     $baseDeploymentName = (
-        Invoke-AzureCli -Arguments @(
-            "deployment", "sub", "list",
-            "--query", "sort_by([?starts_with(name, '$Prefix-base-') && properties.provisioningState == 'Succeeded'], &properties.timestamp)[-1].name",
-            "--output", "tsv"
-        )
+        @(
+            Invoke-AzureCli -Arguments @(
+                "deployment", "sub", "list",
+                "--query", "sort_by([?starts_with(name, '$Prefix-base-') && properties.provisioningState == 'Succeeded'], &properties.timestamp)[-1].name",
+                "--output", "tsv"
+            )
+        ) -join ""
     ).Trim()
     if ([string]::IsNullOrWhiteSpace($baseDeploymentName)) {
         throw "No successful base deployment exists to resume."
@@ -112,14 +114,16 @@ $image = "$acrLoginServer/$Prefix`:$imageTag"
 Write-Host "Building the application image in Azure Container Registry..."
 if ($ReuseExistingImage) {
     $existingTag = (
-        Invoke-AzureCli -Arguments @(
-            "acr", "repository", "show-tags",
-            "--name", $acrName,
-            "--repository", $Prefix,
-            "--query", "[?@ == '$imageTag'] | [0]",
-            "--output", "tsv",
-            "--only-show-errors"
-        )
+        @(
+            Invoke-AzureCli -Arguments @(
+                "acr", "repository", "show-tags",
+                "--name", $acrName,
+                "--repository", $Prefix,
+                "--query", "[?@ == '$imageTag'] | [0]",
+                "--output", "tsv",
+                "--only-show-errors"
+            )
+        ) -join ""
     ).Trim()
     if ($existingTag -ne $imageTag) {
         throw "Image $Prefix`:$imageTag does not exist in $acrName."
@@ -128,13 +132,15 @@ if ($ReuseExistingImage) {
 }
 else {
     $previousRunId = (
-        Invoke-AzureCli -Arguments @(
-            "acr", "task", "list-runs",
-            "--registry", $acrName,
-            "--query", "[0].runId",
-            "--output", "tsv",
-            "--only-show-errors"
-        )
+        @(
+            Invoke-AzureCli -Arguments @(
+                "acr", "task", "list-runs",
+                "--registry", $acrName,
+                "--query", "[0].runId",
+                "--output", "tsv",
+                "--only-show-errors"
+            )
+        ) -join ""
     ).Trim()
     $build = Invoke-AzureCliJson -Arguments @(
         "acr", "build",
@@ -151,13 +157,15 @@ else {
     if ([string]::IsNullOrWhiteSpace($runId)) {
         for ($attempt = 1; $attempt -le 12; $attempt++) {
             $runId = (
-                Invoke-AzureCli -Arguments @(
-                    "acr", "task", "list-runs",
-                    "--registry", $acrName,
-                    "--query", "[0].runId",
-                    "--output", "tsv",
-                    "--only-show-errors"
-                )
+                @(
+                    Invoke-AzureCli -Arguments @(
+                        "acr", "task", "list-runs",
+                        "--registry", $acrName,
+                        "--query", "[0].runId",
+                        "--output", "tsv",
+                        "--only-show-errors"
+                    )
+                ) -join ""
             ).Trim()
             if (
                 -not [string]::IsNullOrWhiteSpace($runId) -and
@@ -347,12 +355,14 @@ if ($LASTEXITCODE -ne 0) {
 
 $displayName = "$Prefix-presenter"
 $existingAppId = (
-    Invoke-AzureCli -Arguments @(
-        "ad", "app", "list",
-        "--display-name", $displayName,
-        "--query", "[0].appId",
-        "--output", "tsv"
-    )
+    @(
+        Invoke-AzureCli -Arguments @(
+            "ad", "app", "list",
+            "--display-name", $displayName,
+            "--query", "[0].appId",
+            "--output", "tsv"
+        )
+    ) -join ""
 ).Trim()
 if ([string]::IsNullOrWhiteSpace($existingAppId)) {
     $clientId = (
@@ -418,7 +428,7 @@ $clientSecret = (
     "--action", "RedirectToLoginPage",
     "--redirect-provider", "azureactivedirectory",
     "--require-https", "true",
-    "--excluded-paths", "/api/health", "/api/event-grid/evidence-arrivals",
+    "--excluded-paths", "/api/health,/api/event-grid/evidence-arrivals",
     "--yes",
     "--only-show-errors",
     "--output", "none"

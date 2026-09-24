@@ -438,7 +438,7 @@ Replace local adapters with Azure adapters through existing seams, verify the de
 - Bicep defines tagged resource groups, managed identity, least-privilege Blob
   roles, Container Apps, ACR, Event Grid, bounded Log Analytics/Application
   Insights, a budget alert, and teardown scripts.
-- Forty-three backend tests pass with 92% statement coverage; Azure adapter,
+- Forty-five backend tests pass; Azure adapter,
   persistent state, trigger reset, Event Grid validation, secret rejection, and
   accepted delivery behavior are covered.
 
@@ -465,7 +465,7 @@ environment. The durable checkpoint now contains:
 - exactly three approved Blob private endpoints and linked private DNS;
 - ACR, managed identity, monitoring, least-privilege runtime roles, and the
   EUR 35 budget alert;
-- application image `oncology-collab-demo:16c1cd8`, whose remote ACR build
+- application image `oncology-collab-demo:d6927c1`, whose remote ACR build
   completed successfully.
 
 The deployment stopped after the local Azure CLI failed to render a Unicode
@@ -476,9 +476,25 @@ as a build failure, and it could not resume after a completed base deployment.
 
 The deployment script now supports resuming from the latest successful base
 deployment, reusing a verified image tag, preserving the approved
-`2026-10-07` expiry, and polling ACR build state without streaming logs. No
-Container App, Event Grid system topic, or Entra presenter application has been
-created yet. No live rehearsal has run.
+`2026-10-07` expiry, polling ACR build state without streaming logs, waiting
+between readiness attempts, and reusing the storage account's Defender-managed
+Event Grid system topic.
+
+The live deployment completed on 2026-09-24:
+
+- the fixed image serves the packaged frontend and passes Azure preflight;
+- fixture seeding is disabled after initial synthetic-data creation;
+- temporary Milan and Utrecht contributor assignments were removed;
+- `late-evidence` is attached alongside Defender's antimalware subscription and
+  filters only Blob-created events in the Milan `events` container;
+- the live rehearsal passed referral, case version 1, Event Grid late evidence,
+  case version 2, human review, MDO manifest, and clean reset;
+- Entra presenter authentication is enabled with HTTPS required;
+- browser navigation redirects to Entra, `/api/health` remains anonymously
+  available, and the excluded Event Grid callback still rejects requests
+  without its shared secret;
+- all three storage accounts keep public network access disabled and all three
+  private endpoints are approved.
 
 ## Technical quality gates
 
@@ -494,15 +510,8 @@ The exact commands will be established with the application scaffold. At minimum
 ## Next action
 
 INC-006 is complete locally and ready for external clinical-fidelity review.
-That review remains a presentation gate. Resume `INC-007` from the successful
-base and image checkpoints with:
-
-```powershell
-.\scripts\deploy-azure.ps1 -ResumeAfterBase -ReuseExistingImage -ApplicationImageTag 16c1cd8
-```
-
-Do not rerun the base deployment or image build. The remaining sequence is
-Container App deployment and fixture seeding, removal of temporary write roles,
-Event Grid creation, live rehearsal verification, and Entra presenter
-authentication. Fabric remains deferred, Azure OpenAI remains disabled, and the
-approved expiry remains 2026-10-07.
+That review remains a presentation gate. `INC-007` is deployed and technically
+verified; the remaining closeout is a presenter sign-in check, final structured
+review, GitHub issue/milestone closure, and teardown on 2026-10-07 using
+`scripts/teardown-azure.ps1`. Fabric remains deferred, Azure OpenAI remains
+disabled, and no private MDO backend was integrated.
