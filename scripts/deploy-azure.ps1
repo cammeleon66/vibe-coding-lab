@@ -127,6 +127,15 @@ if ($ReuseExistingImage) {
     Write-Host "Reusing existing image $image."
 }
 else {
+    $previousRunId = (
+        Invoke-AzureCli -Arguments @(
+            "acr", "task", "list-runs",
+            "--registry", $acrName,
+            "--query", "[0].runId",
+            "--output", "tsv",
+            "--only-show-errors"
+        )
+    ).Trim()
     $build = Invoke-AzureCliJson -Arguments @(
         "acr", "build",
         "--registry", $acrName,
@@ -140,7 +149,27 @@ else {
     )
     $runId = $build.runId
     if ([string]::IsNullOrWhiteSpace($runId)) {
-        throw "Azure Container Registry did not return a build run ID."
+        for ($attempt = 1; $attempt -le 12; $attempt++) {
+            $runId = (
+                Invoke-AzureCli -Arguments @(
+                    "acr", "task", "list-runs",
+                    "--registry", $acrName,
+                    "--query", "[0].runId",
+                    "--output", "tsv",
+                    "--only-show-errors"
+                )
+            ).Trim()
+            if (
+                -not [string]::IsNullOrWhiteSpace($runId) -and
+                $runId -ne $previousRunId
+            ) {
+                break
+            }
+            Start-Sleep -Seconds 5
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($runId) -or $runId -eq $previousRunId) {
+        throw "Azure Container Registry did not expose the queued build run ID."
     }
     do {
         Start-Sleep -Seconds 10
