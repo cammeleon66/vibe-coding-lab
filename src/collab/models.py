@@ -105,6 +105,14 @@ class ReferralPackageView(BaseModel):
     referral_assessment: str | None = None
 
 
+class EvidenceRequestView(BaseModel):
+    case_version: int
+    requested_evidence: list[str]
+    clinical_reason: str
+    requested_by: str
+    requested_at: datetime
+
+
 class JourneyActivity(BaseModel):
     id: str
     kind: Literal[
@@ -118,6 +126,9 @@ class JourneyActivity(BaseModel):
         "destination_selected",
         "package_prepared",
         "package_approved",
+        "version_acknowledged",
+        "provisional_opinion_recorded",
+        "evidence_requested",
     ]
     actor: str
     institution: str
@@ -137,6 +148,9 @@ class ReferralJourneyState(BaseModel):
     selected_centre_id: str | None = None
     requirements: list[JourneyRequirementView] = Field(default_factory=list)
     package: ReferralPackageView | None = None
+    acknowledged_versions: list[int] = Field(default_factory=list)
+    provisional_opinion: str | None = None
+    evidence_request: EvidenceRequestView | None = None
 
 
 class JourneyRoleView(BaseModel):
@@ -183,6 +197,9 @@ class ReferralJourneySnapshot(BaseModel):
     requirements: list[JourneyRequirementView]
     package: ReferralPackageView | None
     next_role: JourneyRole | None = None
+    acknowledged_versions: list[int]
+    provisional_opinion: str | None
+    evidence_request: EvidenceRequestView | None
 
 
 class EnterRoleAction(BaseModel):
@@ -228,6 +245,22 @@ class ApproveReferralPackageAction(BaseModel):
     referral_assessment: str = Field(min_length=20, max_length=2000)
 
 
+class AcknowledgeCaseVersionAction(BaseModel):
+    type: Literal["acknowledge_case_version"] = "acknowledge_case_version"
+    case_version: int = Field(ge=1)
+
+
+class RecordProvisionalOpinionAction(BaseModel):
+    type: Literal["record_provisional_opinion"] = "record_provisional_opinion"
+    opinion: str = Field(min_length=20, max_length=2000)
+
+
+class RequestEvidenceAction(BaseModel):
+    type: Literal["request_evidence"] = "request_evidence"
+    requested_evidence: list[str] = Field(min_length=1)
+    clinical_reason: str = Field(min_length=20, max_length=1000)
+
+
 ReferralJourneyAction = Annotated[
     EnterRoleAction
     | SelectPatientAction
@@ -237,7 +270,10 @@ ReferralJourneyAction = Annotated[
     | SelectDestinationAction
     | QueryRequirementsAction
     | PrepareReferralPackageAction
-    | ApproveReferralPackageAction,
+    | ApproveReferralPackageAction
+    | AcknowledgeCaseVersionAction
+    | RecordProvisionalOpinionAction
+    | RequestEvidenceAction,
     Field(discriminator="type"),
 ]
 

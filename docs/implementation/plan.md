@@ -253,6 +253,8 @@ approves case version 1 for sharing.
 
 #### INC-011: Utrecht receiving review and evidence request
 
+**Status:** Complete
+
 **Depends on:** INC-010.
 
 **Outcome:** The story switches to Dr van Dijk, who acknowledges case version 1,
@@ -276,6 +278,22 @@ and requests missing imaging.
   Bianchi's referral assessment.
 - The evidence request names the missing evidence and clinical reason.
 - No raw workflow-condition identifiers appear in the UI.
+
+**Validation evidence:**
+
+- The approved Milan screen provides a guided handoff to Dr Eva van Dijk's
+  Utrecht workspace.
+- Utrecht displays the exact case version, source-linked package, clinical
+  question, and Dr Bianchi's separate referral assessment.
+- Dr van Dijk must acknowledge version 1 before recording her editable,
+  persisted provisional specialist opinion.
+- The evidence request names the original baseline liver CT and restaging liver
+  MRI with a clinical reason; no workflow-condition identifiers are exposed.
+- Requesting the imaging returns responsibility to Milan and advances the
+  journey to Evidence update.
+- The complete 56-test backend suite, strict mypy, Ruff, five Vitest tests,
+  frontend lint/build, and four desktop/mobile Playwright checks pass,
+  including refresh restore after the Utrecht request.
 
 #### INC-012: Versioned update and closed-loop MDO outcome
 

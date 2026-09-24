@@ -7,11 +7,13 @@ from uuid import uuid4
 from collab.directory import ExpertDiscovery
 from collab.federation import FederatedPatientSource, FederatedSourceError
 from collab.models import (
+    AcknowledgeCaseVersionAction,
     ApproveReferralPackageAction,
     ClinicalNeed,
     ConfirmReferralQuestionAction,
     DemoState,
     EnterRoleAction,
+    EvidenceRequestView,
     FederatedSourceId,
     JourneyActivity,
     JourneyDestinationView,
@@ -26,11 +28,13 @@ from collab.models import (
     QueryExpertDirectoryAction,
     QueryRequirementsAction,
     QuerySourceAction,
+    RecordProvisionalOpinionAction,
     ReferralCreate,
     ReferralJourneyAction,
     ReferralJourneySnapshot,
     ReferralPackageView,
     ReferralSender,
+    RequestEvidenceAction,
     RequirementStatus,
     SelectDestinationAction,
     SelectPatientAction,
@@ -86,6 +90,12 @@ class ReferralJourney:
                 next_state = self._prepare_package(state)
             elif isinstance(action, ApproveReferralPackageAction):
                 next_state = self._approve_package(state, action)
+            elif isinstance(action, AcknowledgeCaseVersionAction):
+                next_state = self._acknowledge_version(state, action)
+            elif isinstance(action, RecordProvisionalOpinionAction):
+                next_state = self._record_provisional_opinion(state, action)
+            elif isinstance(action, RequestEvidenceAction):
+                next_state = self._request_evidence(state, action)
             else:
                 raise ReferralJourneyError("Unsupported referral journey action.")
             self._store.save(next_state)
@@ -215,6 +225,113 @@ class ReferralJourney:
                 "pending_prepared_case": None,
             }
         )
+
+    def _acknowledge_version(
+        self,
+        state: DemoState,
+        action: AcknowledgeCaseVersionAction,
+    ) -> DemoState:
+        self._require_utrecht_referral(state)
+        prepared = state.current_prepared_case
+        if prepared is None or action.case_version != prepared.version:
+            current = prepared.version if prepared is not None else 0
+            raise ReferralJourneyError(
+                f"Case version {current} is current; acknowledge that version first."
+            )
+        journey = state.referral_journey
+        if action.case_version in journey.acknowledged_versions:
+            return state
+        next_journey = journey.model_copy(
+            update={
+                "acknowledged_versions": [
+                    *journey.acknowledged_versions,
+                    action.case_version,
+                ],
+                "activity": [
+                    *journey.activity,
+                    self._utrecht_activity(
+                        "version_acknowledged",
+                        f"Acknowledged case version {action.case_version}",
+                        "Dr van Dijk confirmed the exact source-linked package under review.",
+                    ),
+                ],
+            }
+        )
+        return state.model_copy(update={"referral_journey": next_journey})
+
+    def _record_provisional_opinion(
+        self,
+        state: DemoState,
+        action: RecordProvisionalOpinionAction,
+    ) -> DemoState:
+        self._require_utrecht_referral(state)
+        prepared = state.current_prepared_case
+        if prepared is None or prepared.version not in state.referral_journey.acknowledged_versions:
+            raise ReferralJourneyError("Acknowledge case version 1 before recording an opinion.")
+        opinion = action.opinion.strip()
+        journey = state.referral_journey.model_copy(
+            update={
+                "provisional_opinion": opinion,
+                "activity": [
+                    *state.referral_journey.activity,
+                    self._utrecht_activity(
+                        "provisional_opinion_recorded",
+                        "Recorded a provisional specialist opinion",
+                        "The opinion is owned by Dr Eva van Dijk and applies to case version 1.",
+                    ),
+                ],
+            }
+        )
+        return state.model_copy(update={"referral_journey": journey})
+
+    def _request_evidence(
+        self,
+        state: DemoState,
+        action: RequestEvidenceAction,
+    ) -> DemoState:
+        self._require_utrecht_referral(state)
+        journey = state.referral_journey
+        prepared = state.current_prepared_case
+        if prepared is None or prepared.version not in journey.acknowledged_versions:
+            raise ReferralJourneyError("Acknowledge the current case version first.")
+        if journey.provisional_opinion is None:
+            raise ReferralJourneyError(
+                "Record Dr van Dijk's provisional opinion before requesting evidence."
+            )
+        package = journey.package
+        if package is None:
+            raise ReferralJourneyError("The approved referral package is not available.")
+        allowed = set(package.missing_evidence)
+        requested = list(dict.fromkeys(action.requested_evidence))
+        if not set(requested) <= allowed:
+            raise ReferralJourneyError(
+                "Request only evidence identified as missing in the package."
+            )
+        request = EvidenceRequestView(
+            case_version=prepared.version,
+            requested_evidence=requested,
+            clinical_reason=action.clinical_reason.strip(),
+            requested_by="Dr Eva van Dijk",
+            requested_at=utc_now(),
+        )
+        next_journey = journey.model_copy(
+            update={
+                "evidence_request": request,
+                "current_stage": JourneyStageId.EVIDENCE_UPDATE,
+                "activity": [
+                    *journey.activity,
+                    self._utrecht_activity(
+                        "evidence_requested",
+                        "Requested missing imaging from Milan",
+                        (
+                            f"{', '.join(requested)}. "
+                            f"Clinical reason: {request.clinical_reason}"
+                        ),
+                    ),
+                ],
+            }
+        )
+        return state.model_copy(update={"referral_journey": next_journey})
 
     def _query_directory(self, state: DemoState) -> DemoState:
         self._require_milan_referral_stage(state)
@@ -561,7 +678,16 @@ class ReferralJourney:
             selected_centre_id=state.referral_journey.selected_centre_id,
             requirements=state.referral_journey.requirements,
             package=state.referral_journey.package,
-            next_role=JourneyRole.UTRECHT if state.current_referral is not None else None,
+            next_role=(
+                JourneyRole.MILAN
+                if state.referral_journey.evidence_request is not None
+                else JourneyRole.UTRECHT
+                if state.current_referral is not None
+                else None
+            ),
+            acknowledged_versions=state.referral_journey.acknowledged_versions,
+            provisional_opinion=state.referral_journey.provisional_opinion,
+            evidence_request=state.referral_journey.evidence_request,
         )
 
     def _stages(self, state: DemoState) -> list[JourneyStageView]:
@@ -616,6 +742,8 @@ class ReferralJourney:
     def _current_stage(self, state: DemoState) -> JourneyStageId:
         if state.handoff_manifests:
             return JourneyStageId.MDO_OUTCOME
+        if state.referral_journey.evidence_request is not None:
+            return JourneyStageId.EVIDENCE_UPDATE
         if state.current_prepared_case and state.current_prepared_case.version > 1:
             return JourneyStageId.EVIDENCE_UPDATE
         if state.current_referral is not None:
@@ -653,6 +781,32 @@ class ReferralJourney:
             kind=kind,
             actor=actor,
             institution="Istituto Nazionale dei Tumori, Milan",
+            title=title,
+            detail=detail,
+            occurred_at=utc_now(),
+        )
+
+    def _require_utrecht_referral(self, state: DemoState) -> None:
+        if state.referral_journey.active_role != JourneyRole.UTRECHT:
+            raise ReferralJourneyError("Open the Utrecht workspace first.")
+        if state.current_referral is None or state.current_prepared_case is None:
+            raise ReferralJourneyError("Utrecht has no approved referral package.")
+
+    def _utrecht_activity(
+        self,
+        kind: Literal[
+            "version_acknowledged",
+            "provisional_opinion_recorded",
+            "evidence_requested",
+        ],
+        title: str,
+        detail: str,
+    ) -> JourneyActivity:
+        return JourneyActivity(
+            id=f"ACT-{uuid4().hex[:10].upper()}",
+            kind=kind,
+            actor="Dr Eva van Dijk",
+            institution="UMC Utrecht",
             title=title,
             detail=detail,
             occurred_at=utc_now(),

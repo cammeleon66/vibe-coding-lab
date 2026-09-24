@@ -17,6 +17,48 @@ from collab.models import (
 from collab.persistence import JsonStateStore
 
 
+def approve_case_version_one(client: TestClient) -> None:
+    client.post("/api/journey/actions", json={"type": "enter_role", "role": "milan"})
+    client.post(
+        "/api/journey/actions",
+        json={"type": "select_patient", "patient_id": "CRC-EU-001"},
+    )
+    for source_id in FederatedSourceId:
+        client.post(
+            "/api/journey/actions",
+            json={"type": "query_source", "source_id": source_id.value},
+        )
+    client.post(
+        "/api/journey/actions",
+        json={
+            "type": "confirm_referral_question",
+            "question": "Please assess conversion response and liver resectability.",
+        },
+    )
+    client.post("/api/journey/actions", json={"type": "query_expert_directory"})
+    client.post(
+        "/api/journey/actions",
+        json={
+            "type": "select_destination",
+            "centre_id": "utrecht-crc",
+            "clinician_id": "eva-van-dijk",
+        },
+    )
+    client.post("/api/journey/actions", json={"type": "query_requirements"})
+    client.post("/api/journey/actions", json={"type": "prepare_referral_package"})
+    response = client.post(
+        "/api/journey/actions",
+        json={
+            "type": "approve_referral_package",
+            "referral_assessment": (
+                "Response after conversion therapy requires specialist assessment "
+                "of liver resectability and the next multidisciplinary step."
+            ),
+        },
+    )
+    assert response.status_code == 200
+
+
 def test_initial_snapshot_defines_roles_patients_and_six_stages(tmp_path: Path) -> None:
     journey = ReferralJourney(JsonStateStore(tmp_path / "state.json"))
 
@@ -277,3 +319,57 @@ def test_milan_approves_source_linked_package_before_utrecht_can_enter(
     assert approved["roles"][1]["available"] is True
     assert restored.package is not None
     assert restored.package.referral_assessment is not None
+
+
+def test_utrecht_acknowledges_v1_records_opinion_and_requests_imaging(
+    tmp_path: Path,
+) -> None:
+    with TestClient(create_app(tmp_path / "state.json")) as client:
+        approve_case_version_one(client)
+        client.post("/api/journey/actions", json={"type": "enter_role", "role": "utrecht"})
+
+        premature = client.post(
+            "/api/journey/actions",
+            json={
+                "type": "record_provisional_opinion",
+                "opinion": "The available evidence supports multidisciplinary review.",
+            },
+        )
+        acknowledged = client.post(
+            "/api/journey/actions",
+            json={"type": "acknowledge_case_version", "case_version": 1},
+        ).json()
+        opinion = client.post(
+            "/api/journey/actions",
+            json={
+                "type": "record_provisional_opinion",
+                "opinion": (
+                    "The response appears sufficient to discuss liver-directed treatment, "
+                    "but original baseline CT and current liver MRI are needed before a "
+                    "definitive resectability opinion."
+                ),
+            },
+        ).json()
+        requested = client.post(
+            "/api/journey/actions",
+            json={
+                "type": "request_evidence",
+                "requested_evidence": [
+                    "Original baseline liver CT",
+                    "Restaging liver MRI",
+                ],
+                "clinical_reason": (
+                    "Original lesion sites and current vessel relationships must be reviewed "
+                    "before the multidisciplinary resectability decision."
+                ),
+            },
+        ).json()
+
+    assert premature.status_code == 409
+    assert acknowledged["acknowledged_versions"] == [1]
+    assert "original baseline CT" in opinion["provisional_opinion"]
+    assert requested["evidence_request"]["requested_by"] == "Dr Eva van Dijk"
+    assert requested["evidence_request"]["case_version"] == 1
+    assert requested["stages"][4]["status"] == "current"
+    assert requested["next_role"] == "milan"
+    assert requested["activity"][-1]["kind"] == "evidence_requested"

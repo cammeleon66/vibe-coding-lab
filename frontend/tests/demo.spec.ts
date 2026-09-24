@@ -73,8 +73,23 @@ test('prepares and approves the Milan referral package', async ({ page }) => {
       .filter({ hasText: 'Utrecht review' }),
   ).toHaveAttribute('aria-current', 'step')
 
+  await page.getByRole('button', { name: 'Continue as Dr Eva van Dijk' }).click()
+  await expect(page.getByRole('heading', { name: 'Review incoming referral' })).toBeVisible()
+  await expect(page.getByText("Dr Bianchi's referral assessment")).toBeVisible()
+  await page.getByRole('button', { name: 'Acknowledge case version 1' }).click()
+  await page.getByRole('button', { name: 'Record provisional opinion' }).click()
+  await expect(page.getByText('Provisional opinion recorded')).toBeVisible()
+  await page.getByRole('button', { name: 'Request missing imaging' }).click()
+  await expect(page.getByText('Imaging request sent to Milan')).toBeVisible()
+  await expect(
+    page
+      .getByRole('list', { name: 'Referral stages' })
+      .getByRole('listitem')
+      .filter({ hasText: 'Evidence update' }),
+  ).toHaveAttribute('aria-current', 'step')
+
   await page.reload()
-  await expect(page.getByText('Case version 1 approved and sent')).toBeVisible()
+  await expect(page.getByText('Imaging request sent to Milan')).toBeVisible()
 })
 
 test('supports keyboard navigation and has no serious accessibility violations', async ({

@@ -659,6 +659,114 @@
   margin-bottom: 3px;
 }
 
+.utrecht-review {
+  display: grid;
+  gap: 18px;
+}
+
+.incoming-referral-heading,
+.receiving-card {
+  padding: 24px;
+  border: 1px solid var(--line);
+  background: var(--white);
+}
+
+.incoming-referral-heading {
+  display: flex;
+  gap: 18px;
+  align-items: start;
+  justify-content: space-between;
+  border-color: rgba(36, 119, 95, 0.4);
+  box-shadow: inset 4px 0 var(--success);
+}
+
+.incoming-referral-heading span,
+.incoming-referral-heading > strong {
+  color: var(--success);
+  font-size: 0.7rem;
+  font-weight: 850;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.incoming-referral-heading h2 {
+  margin: 5px 0;
+}
+
+.incoming-referral-heading p {
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+.receiving-card h2 {
+  margin-top: 0;
+}
+
+.receiving-card dl {
+  margin: 0;
+}
+
+.receiving-card dl div {
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+}
+
+.receiving-card dt,
+.receiving-card > label {
+  margin-bottom: 6px;
+  display: block;
+  color: var(--ink-soft);
+  font-size: 0.7rem;
+  font-weight: 850;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.receiving-card dd {
+  margin: 0;
+  line-height: 1.55;
+}
+
+.package-version-note {
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+}
+
+.receiving-card textarea {
+  width: 100%;
+  min-height: 110px;
+  padding: 13px 14px;
+  resize: vertical;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  background: var(--paper);
+  font: inherit;
+  line-height: 1.5;
+}
+
+.receiving-card > .primary-action {
+  margin-top: 14px;
+}
+
+.requested-evidence {
+  margin: 14px 0 18px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.requested-evidence span {
+  padding: 8px 10px;
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  color: var(--warning);
+  border: 1px solid rgba(160, 75, 50, 0.32);
+  background: rgba(160, 75, 50, 0.05);
+  font-size: 0.76rem;
+  font-weight: 750;
+}
+
 .activity-timeline {
   max-height: calc(100vh - 180px);
   position: sticky;

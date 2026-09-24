@@ -65,6 +65,9 @@ interface JourneyActivity {
     | 'destination_selected'
     | 'package_prepared'
     | 'package_approved'
+    | 'version_acknowledged'
+    | 'provisional_opinion_recorded'
+    | 'evidence_requested'
   actor: string
   institution: string
   title: string
@@ -137,9 +140,18 @@ interface JourneySnapshot {
     referral_assessment: string | null
   } | null
   next_role: JourneyRole | null
+  acknowledged_versions: number[]
+  provisional_opinion: string | null
+  evidence_request: {
+    case_version: number
+    requested_evidence: string[]
+    clinical_reason: string
+    requested_by: string
+    requested_at: string
+  } | null
 }
 
-type Screen = 'role' | 'patients' | 'selected' | 'referral'
+type Screen = 'role' | 'patients' | 'selected' | 'referral' | 'utrecht'
 
 async function requestJson<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -173,6 +185,8 @@ function App() {
                 ? 'selected'
                 : 'patients',
           )
+        } else if (restored.active_role === 'utrecht') {
+          setScreen('utrecht')
         }
       })
       .catch((reason: unknown) => {
@@ -207,7 +221,7 @@ function App() {
         updated.package ? 'referral' : updated.selected_patient_id ? 'selected' : 'patients',
       )
     } else {
-      setNotice('The Utrecht receiving screen is implemented in issue #10.')
+      setScreen('utrecht')
     }
   }
 
@@ -324,6 +338,7 @@ function App() {
                   if (stage.id === 'patient') setScreen('patients')
                   else if (stage.id === 'local_data') setScreen('selected')
                   else if (stage.id === 'referral') setScreen('referral')
+                  else if (stage.id === 'utrecht_review') setScreen('utrecht')
                   else setNotice(`${stage.label} is implemented in a later increment.`)
                 }}
               >
@@ -378,6 +393,15 @@ function App() {
             )}
             {screen === 'referral' && selectedPatient && (
               <ReferralPreparation
+                snapshot={snapshot}
+                patient={selectedPatient}
+                busy={busy}
+                onAction={applyAction}
+                onOpenUtrecht={() => void enterRole('utrecht')}
+              />
+            )}
+            {screen === 'utrecht' && selectedPatient && (
+              <UtrechtReview
                 snapshot={snapshot}
                 patient={selectedPatient}
                 busy={busy}
@@ -672,11 +696,13 @@ function ReferralPreparation({
   patient,
   busy,
   onAction,
+  onOpenUtrecht,
 }: {
   snapshot: JourneySnapshot
   patient: JourneyPatient
   busy: boolean
   onAction: (action: object) => Promise<JourneySnapshot | null>
+  onOpenUtrecht: () => void
 }) {
   const [question, setQuestion] = useState(
     snapshot.clinical_question ?? defaultReferralQuestion,
@@ -893,13 +919,24 @@ function ReferralPreparation({
               onChange={(event) => setAssessment(event.target.value)}
             />
             {snapshot.package.approved ? (
-              <div className="sent-confirmation" role="status">
-                <ShieldCheck size={20} />
-                <span>
-                  <strong>Case version 1 approved and sent</strong>
-                  Utrecht is now the next clinical workspace.
-                </span>
-              </div>
+              <>
+                <div className="sent-confirmation" role="status">
+                  <ShieldCheck size={20} />
+                  <span>
+                    <strong>Case version 1 approved and sent</strong>
+                    Utrecht is now the next clinical workspace.
+                  </span>
+                </div>
+                <button
+                  className="primary-action"
+                  type="button"
+                  disabled={busy}
+                  onClick={onOpenUtrecht}
+                >
+                  Continue as Dr Eva van Dijk
+                  <ArrowRight size={17} />
+                </button>
+              </>
             ) : (
               <button
                 className="primary-action"
@@ -917,6 +954,177 @@ function ReferralPreparation({
               </button>
             )}
           </div>
+        </article>
+      )}
+    </section>
+  )
+}
+
+const defaultProvisionalOpinion =
+  'The treatment response appears sufficient to discuss liver-directed treatment, but original baseline CT and current liver MRI are needed before a definitive resectability opinion.'
+
+const defaultEvidenceReason =
+  'Original lesion sites and current vessel relationships must be reviewed before the multidisciplinary resectability decision.'
+
+function UtrechtReview({
+  snapshot,
+  patient,
+  busy,
+  onAction,
+}: {
+  snapshot: JourneySnapshot
+  patient: JourneyPatient
+  busy: boolean
+  onAction: (action: object) => Promise<JourneySnapshot | null>
+}) {
+  const [opinion, setOpinion] = useState(
+    snapshot.provisional_opinion ?? defaultProvisionalOpinion,
+  )
+  const [reason, setReason] = useState(
+    snapshot.evidence_request?.clinical_reason ?? defaultEvidenceReason,
+  )
+  const version = snapshot.package?.case_version ?? 1
+  const acknowledged = snapshot.acknowledged_versions.includes(version)
+  const requestedImaging =
+    snapshot.package?.missing_evidence.filter(
+      (item) => item.includes('CT') || item.includes('MRI'),
+    ) ?? []
+
+  return (
+    <section className="utrecht-review screen-stage">
+      <div className="section-heading">
+        <div>
+          <p className="eyebrow">Dr Eva van Dijk · UMC Utrecht</p>
+          <h1>Review incoming referral</h1>
+        </div>
+        <p>
+          Review the exact approved package, record a provisional specialist opinion, and ask
+          Milan for evidence needed before the final decision.
+        </p>
+      </div>
+
+      <div className="incoming-referral-heading">
+        <div>
+          <span>Incoming referral</span>
+          <h2>{patient.display_name}</h2>
+          <p>{patient.diagnosis}</p>
+        </div>
+        <strong>Case version {version}</strong>
+      </div>
+
+      <article className="receiving-card">
+        <h2>Approved referral from Milan</h2>
+        <dl>
+          <div>
+            <dt>Clinical question</dt>
+            <dd>{snapshot.package?.clinical_question}</dd>
+          </div>
+          <div>
+            <dt>Dr Bianchi's referral assessment</dt>
+            <dd>{snapshot.package?.referral_assessment}</dd>
+          </div>
+        </dl>
+        <p className="package-version-note">
+          This review applies to case version {version}. Source provenance remains attached to
+          the structured package.
+        </p>
+        {!acknowledged ? (
+          <button
+            className="primary-action"
+            type="button"
+            disabled={busy}
+            onClick={() =>
+              void onAction({ type: 'acknowledge_case_version', case_version: version })
+            }
+          >
+            Acknowledge case version {version}
+          </button>
+        ) : (
+          <p className="confirmed-line">
+            <Check size={16} /> Version {version} acknowledged by Dr van Dijk
+          </p>
+        )}
+      </article>
+
+      {acknowledged && (
+        <article className="receiving-card">
+          <h2>Provisional specialist opinion</h2>
+          <p>
+            This is Dr van Dijk's clinical assessment. It is separate from the Milan referral
+            assessment above.
+          </p>
+          <label htmlFor="provisional-opinion">Opinion for case version {version}</label>
+          <textarea
+            id="provisional-opinion"
+            value={opinion}
+            disabled={busy || snapshot.provisional_opinion !== null}
+            onChange={(event) => setOpinion(event.target.value)}
+          />
+          {!snapshot.provisional_opinion ? (
+            <button
+              className="primary-action"
+              type="button"
+              disabled={busy || opinion.trim().length < 20}
+              onClick={() =>
+                void onAction({
+                  type: 'record_provisional_opinion',
+                  opinion: opinion.trim(),
+                })
+              }
+            >
+              Record provisional opinion
+            </button>
+          ) : (
+            <p className="confirmed-line">
+              <Check size={16} /> Provisional opinion recorded
+            </p>
+          )}
+        </article>
+      )}
+
+      {snapshot.provisional_opinion && (
+        <article className="receiving-card evidence-request-card">
+          <h2>Evidence needed from Milan</h2>
+          <div className="requested-evidence">
+            {requestedImaging.map((item) => (
+              <span key={item}>
+                <CircleAlert size={15} />
+                {item}
+              </span>
+            ))}
+          </div>
+          <label htmlFor="evidence-reason">Clinical reason</label>
+          <textarea
+            id="evidence-reason"
+            value={reason}
+            disabled={busy || snapshot.evidence_request !== null}
+            onChange={(event) => setReason(event.target.value)}
+          />
+          {snapshot.evidence_request ? (
+            <div className="sent-confirmation" role="status">
+              <ShieldCheck size={20} />
+              <span>
+                <strong>Imaging request sent to Milan</strong>
+                Dr Bianchi is now responsible for reviewing and approving the update.
+              </span>
+            </div>
+          ) : (
+            <button
+              className="primary-action"
+              type="button"
+              disabled={busy || reason.trim().length < 20 || requestedImaging.length === 0}
+              onClick={() =>
+                void onAction({
+                  type: 'request_evidence',
+                  requested_evidence: requestedImaging,
+                  clinical_reason: reason.trim(),
+                })
+              }
+            >
+              Request missing imaging
+              <ArrowRight size={17} />
+            </button>
+          )}
         </article>
       )}
     </section>

@@ -116,6 +116,9 @@ const initialSnapshot = {
   requirements: [],
   package: null,
   next_role: null,
+  acknowledged_versions: [],
+  provisional_opinion: null,
+  evidence_request: null,
 }
 
 const milanSnapshot = {
