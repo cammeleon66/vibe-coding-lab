@@ -159,6 +159,18 @@ def test_reset_brings_isolated_sites_back_online(net: Network) -> None:
     assert sites["de"]["reachable"] is True and sites["de"]["isolated"] is False
 
 
+def test_reset_keeps_site_isolated_if_it_cannot_be_reached(net: Network) -> None:
+    net.ui().post("/api/sites/nl/connectivity", json={"online": False})
+    net.down.add("nl")
+    net.ui().post("/api/reset")
+    net.down.clear()
+    sites = {item["site"]: item for item in net.ui().get("/api/sites").json()["sites"]}
+    assert sites["nl"]["isolated"] is True and sites["nl"]["reachable"] is False
+    assert net.ui().post("/api/sites/nl/connectivity", json={"online": True}).status_code == 200
+    sites = {item["site"]: item for item in net.ui().get("/api/sites").json()["sites"]}
+    assert sites["nl"]["reachable"] is True and sites["nl"]["isolated"] is False
+
+
 def test_isolation_switch_requires_admin_signature(net: Network) -> None:
     blocked = TestClient(net.apps["de"]).post("/admin/connectivity", json={"online": False})
     assert blocked.status_code == 401

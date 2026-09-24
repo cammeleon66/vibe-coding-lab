@@ -30,6 +30,8 @@ from fednet.transport import RemoteError, SignedClient, SiteUnavailable
 
 ACCESS_COOKIE = "fed_demo_access"
 ACCESS_TTL_SECONDS = 12 * 60 * 60
+# Sites scale to zero; waking a replica can take ~20 s.
+CONNECTIVITY_TIMEOUT = 60.0
 CONNECTED = ("nl", "de")
 
 
@@ -282,13 +284,15 @@ def create_hub_app(
 
     @application.post("/api/reset")
     def reset() -> dict[str, Any]:
+        still_isolated = []
         for site in runtime.read_json("state/isolated.json", []):
             try:
                 admin[site].call("POST", "/admin/connectivity", correlation_id="reset",
-                                 payload={"online": True}, timeout=10.0)
+                                 payload={"online": True}, timeout=CONNECTIVITY_TIMEOUT)
             except (SiteUnavailable, RemoteError):
-                continue
-        runtime.write_json("state/isolated.json", [])
+                # Keep it listed so the control room still offers "Bring online".
+                still_isolated.append(site)
+        runtime.write_json("state/isolated.json", still_isolated)
         runtime.store.delete_prefix("audit/")
         runtime.store.delete_prefix("routes/")
         runtime.generation = runtime.generation + 1
@@ -308,7 +312,8 @@ def create_hub_app(
         correlation_id = new_correlation_id()
         try:
             admin[site].call("POST", "/admin/connectivity", correlation_id=correlation_id,
-                             payload={"online": request.online}, timeout=10.0)
+                             payload={"online": request.online},
+                             timeout=CONNECTIVITY_TIMEOUT)
         except SiteUnavailable as error:
             raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE,
                                 f"{data.SITES[site]['name']} cannot be reached to change its "
