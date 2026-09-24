@@ -55,12 +55,12 @@ function SiteCards({
           {site.site !== 'hub' && (
             <button
               type="button"
-              className={site.isolated ? 'primary' : 'secondary danger-outline'}
+              className={site.isolated || !site.reachable ? 'primary' : 'secondary danger-outline'}
               disabled={busy !== null}
-              onClick={() => onToggle(site.site as 'nl' | 'de', !!site.isolated)}
+              onClick={() => onToggle(site.site as 'nl' | 'de', (!!site.isolated || !site.reachable))}
             >
-              {site.isolated ? <Plug aria-hidden size={16} /> : <Unplug aria-hidden size={16} />}{' '}
-              {busy === site.site ? 'Switching…' : site.isolated ? `Bring ${site.name} online` : `Take ${site.name} offline`}
+              {site.isolated || !site.reachable ? <Plug aria-hidden size={16} /> : <Unplug aria-hidden size={16} />}{' '}
+              {busy === site.site ? 'Switching…' : site.isolated || !site.reachable ? `Bring ${site.name} online` : `Take ${site.name} offline`}
             </button>
           )}
         </article>
