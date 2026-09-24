@@ -14,7 +14,7 @@ services or trust-boundary changes.
 ([`federated-network-proposal.md`](../product/federated-network-proposal.md),
 Autonomous MDO removed). Architecture v0.3
 ([`federated-network-architecture.md`](../architecture/federated-network-architecture.md),
-ADR-017) awaits approval; nothing below is implemented. Epic: GitHub #17;
+ADR-017) approved 2026-09-24. Epic: GitHub #17;
 increments #18–#27.
 
 Order follows the architecture review: the three-service split and its

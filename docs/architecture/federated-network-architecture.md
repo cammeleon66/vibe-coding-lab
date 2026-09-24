@@ -1,6 +1,7 @@
 # Architecture: federated European oncology network (v0.3)
 
-**Status:** Proposed — awaiting architecture approval before INC-017.
+**Status:** Approved by @cammeleon66 on 2026-09-24 ("yes go for it!"); the
+product owner delegated open choices ("for where you are insecure just go").
 **Date:** 2026-09-24
 **Decision:** ADR-017 (below); supersedes the navigation part of ADR-016 and
 the single-application recommendation of `architecture-proposal.md` v0.1.
@@ -292,7 +293,7 @@ two-subscription target is recorded as future landing-zone work.
 
 ## ADR-017: Role-based federated services replace the linear storyline
 
-**Status:** Proposed. **Date:** 2026-09-24.
+**Status:** Approved 2026-09-24. **Date:** 2026-09-24.
 **Context:** product-owner feedback ("too scripted") and the approved v0.5
 proposal. **Decision:** as in this document: three services from one
 codebase with application-level isolation, hub-only directional signed
